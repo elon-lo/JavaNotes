@@ -1185,7 +1185,7 @@ i18n.password=密码
 
 - Spring MVC运行流程如下：
 
-  ![image](https://github.com/yuluo99/interview/blob/main/SpringMVC.jpg)
+  ![](https://pic3.zhimg.com/80/v2-7d4fc793caae495b87eba4e7dc42e386_720w.jpg)
 
 - 这张图中我用了两种颜色的块状区域来表示，绿色表示 MVC 部分，橘色表示 SpringMVC 三大组件，这里共划分出了 11 个步骤，这里对这 11 个步骤进行一下说明：
 
