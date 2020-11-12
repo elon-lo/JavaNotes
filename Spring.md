@@ -61,7 +61,7 @@ BeanFactory和ApplicationContext是Spring的两大核心接口，都可以当做
 
 ## 8、Autowired有几种使用规则?
 
-主要解决了引用类型注入的繁琐，实现自动注入
+主要解决了引用类型注入的繁琐，实现自动注入(默认使用byType注入)
 
 - byName(按名称注入)：Java类中引用类型的属性名和Spring容器(配置文件)中bean的id一样，且数据类型是一致的
 
