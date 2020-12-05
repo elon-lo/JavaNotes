@@ -277,7 +277,7 @@ public class MyThreadPoolDemo {
 }
 ```
 
-### 6、线程池的7大方法
+### 6、线程池的7个参数
 
 - corePoolSize：线程池中的常驻核心线程数
 - maximumPoolSize：线程池中能够容纳同时执行的最大线程数，此值必须大于等于1
