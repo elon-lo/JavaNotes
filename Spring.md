@@ -70,15 +70,20 @@ BeanFactory和ApplicationContext是Spring的两大核心接口，都可以当做
 - byType(按类型注入)：根据bean的类型和当前bean的属性的类型自动装配，若IOC容器中有1个以上类型匹配的，则抛异常
 
   使用方法：在bean中将autowire="byType"
+  
+## 9、Autowired和Resource有什么区别？
 
-## 9、Spring中bean的作用域有哪些?
+- Autowired是以byType方式注入，Resource是以byName方式注入
+- Autowired是基于Spring实现的，Resource是基于JDK实现的
+
+## 10、Spring中bean的作用域有哪些?
 
 使用bean的scope属性来配置bean的作用域，总共有四种：singleton，prototype，request，session
 
 - singleton：默认值，容器初始化时创建bean实例，在容器的生命周期内只创建这一个bean，单例的
 - prototype：原型的，容器初始化时不创建bean实例，而是在每次请求时都创建一个新的bean实例，并返回
 
-## 10、IOC中bean的生命周期?
+## 11、IOC中bean的生命周期?
 
 1. 创建bean实例
 2. 为bean的属性赋值
@@ -86,7 +91,7 @@ BeanFactory和ApplicationContext是Spring的两大核心接口，都可以当做
 4. 操作及使用bean
 5. 当容器关闭时，调用bean的销毁方法
 
-## 11、基于注解的方式配置bean
+## 12、基于注解的方式配置bean
 
 - 组件扫描：Spring能够从classpath下自动扫描、侦测和实例化具有特定注解的组件
 - 特定组件如下：
@@ -99,7 +104,7 @@ BeanFactory和ApplicationContext是Spring的两大核心接口，都可以当做
   - 当需要扫描多个包时，可以用逗号分隔
   - 如果仅希望扫描特定的类而非基包下的所有类，可以使用resource-pattern属性过滤特定的类
 
-## 12、什么是AOP?
+## 13、什么是AOP?
 
 - AOP(Aspects-Oriented Programming)，即面向切面编程，是对OOP(Oriented Object Programming)的补充。
 
@@ -249,7 +254,7 @@ public class LoggingAspect {
       </aop:config>
   ```
 
-  ## 13、在Spring中整合JDBC
+  ## 14、在Spring中整合JDBC
 
   ```properties
   jdbc.user = root
@@ -284,7 +289,7 @@ public class LoggingAspect {
 
   
 
-  ## 14、Spring中的事务管理
+  ## 15、Spring中的事务管理
 
   事务的四个关键属性(ACID)
 
