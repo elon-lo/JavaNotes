@@ -8,11 +8,7 @@
 
   - 测试文件上传2
 
-    ![General 3200x2048 Los Angeles vector art architecture city building lights skyscraper Hollywood hills digital art night stars cityscape USA clear sky](https://typora-yu-pic.oss-cn-chengdu.aliyuncs.com/picBed/wallhaven-nr2d8j.jpg)
-
-    - 测试文件上传3
-
-      ![General 1280x834 skyscraper intersections cityscape artwork colorful city people car](https://typora-yu-pic.oss-cn-chengdu.aliyuncs.com/picBed/wallhaven-0plkz3.jpg)
+    ![sfdsdf](https://typora-yu-pic.oss-cn-chengdu.aliyuncs.com/picBed/wallhaven-nr2d8j.jpg)
 
 ![ass](https://github.com/elonlo1024/JavaTools/blob/main/images/wallhaven-6qxdwl_1920x1080.png)
 
