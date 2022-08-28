@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yu.mybatis.mapper.SQLMapper">
+
+    <!--
+        useGeneratedKeys:设置使用自增的主键
+            keyProperty:因为增删改有统一的返回值，是受影响的行数，因此只能将获取的自增主键放在传输参数user的某个属性中
+     -->
+    <insert id="insertUser" useGeneratedKeys="true" keyProperty="id">
+        insert into t_user values(null,#{username},#{password},#{age},#{sex},#{email})
+    </insert>
+
+    <delete id="deleteMore">
+        delete from t_user where id in (${ids})
+    </delete>
+
+    <select id="getUserByLike" resultType="com.yu.mybatis.pojo.User">
+        select username, password, age, sex, email from t_user where username like '%'#{username}'%'
+    </select>
+
+    <select id="getAllUser" resultType="com.yu.mybatis.pojo.User">
+        select username, password, age, sex, email from ${tableName}
+    </select>
+</mapper>
