@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yu.mybatis.mapper.EmployeeMapper">
+
+    <!--
+        resultMap:设置自定义映射关系
+        id:唯一标识,不能重复
+        type:设置映射关系中的实体类类型
+        子标签:
+        id:设置主键的映射关系
+        result:设置普通字段的映射关系
+        属性:
+        property:设置映射关系中的属性名,必须是type属性所设置的实体类中的属性名
+        column:设置映射关系中的字段名,必须是sql语句查询出的字段名
+     -->
+    <resultMap id="empResultMap" type="com.yu.mybatis.pojo.Employee">
+        <id property="eid" column="eid"/>
+        <result property="empName" column="emp_name"/>
+        <result property="age" column="age"/>
+        <result property="sex" column="sex"/>
+        <result property="email" column="email"/>
+        <result property="did" column="did"/>
+    </resultMap>
+
+    <resultMap id="empAndDeptResultMapOne" type="Employee">
+        <id property="eid" column="eid"/>
+        <result property="empName" column="emp_name"/>
+        <result property="age" column="age"/>
+        <result property="sex" column="sex"/>
+        <result property="email" column="email"/>
+        <result property="department.did" column="did"/>
+        <result property="department.deptName" column="dept_name"/>
+    </resultMap>
+
+    <resultMap id="empAndDeptResultMapTwo" type="Employee">
+        <id property="eid" column="eid"/>
+        <result property="empName" column="emp_name"/>
+        <result property="age" column="age"/>
+        <result property="sex" column="sex"/>
+        <result property="email" column="email"/>
+        <!--
+            association:处理多对一映射关系
+            property:需要处理多对一映射关系的属性名
+            javaType:该属性的类型
+         -->
+        <association property="department" javaType="Department">
+            <id property="did" column="did"/>
+            <result property="deptName" column="dept_name"/>
+        </association>
+    </resultMap>
+
+    <resultMap id="empAndDeptResultMapStep" type="Employee">
+        <id property="eid" column="eid"/>
+        <result property="empName" column="emp_name"/>
+        <result property="age" column="age"/>
+        <result property="sex" column="sex"/>
+        <result property="email" column="email"/>
+        <!--
+            property:需要处理的实体类属性
+            javaType:属性的类型
+            select:设置分步查询的sql唯一标识(mapper接口方法的全类名)
+            column:设置分步查询的条件
+         -->
+        <association property="department"
+                     javaType="Department"
+                     select="com.yu.mybatis.mapper.DepartmentMapper.getEmployeeAndDepartmentByStepTwo"
+                     fetchType="lazy"
+                     column="did" />
+    </resultMap>
+
+    <select id="getAllEmployee" resultMap="empResultMap">
+        select emp_name, age, sex, email
+        from employee
+    </select>
+
+    <select id="getEmployeeAndDepartmentByEid" resultMap="empAndDeptResultMapTwo">
+        select e.emp_name, e.age, e.sex, e.email, d.dept_name
+        from employee e
+                 left join department d on e.did = d.did
+        where e.eid = #{eid}
+    </select>
+
+    <select id="getEmployeeAndDepartmentByStepOne" resultMap="empAndDeptResultMapStep">
+        select emp_name, age, sex, email, did from employee where eid = #{eid}
+    </select>
+
+    <select id="getDepartmentAndEmployeeByStepTwo" resultType="com.yu.mybatis.pojo.Employee">
+        select emp_name, age, sex, email from employee where did = #{did}
+    </select>
+</mapper>
