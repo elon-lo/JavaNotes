@@ -2959,7 +2959,6 @@ Grafana主要功能如下：
 
      Password：root
 
-     
+6. 测试上传图片是否显示
 
-
-
+   ![image-20221201221453854](https://typora-yu-pic.oss-cn-chengdu.aliyuncs.com/picBed/image-20221201221453854.png)
