@@ -1,0 +1,67 @@
+rootProject.name = 'gradle-parent-demo'
+include 'gradle-first-subject-demo'
+include 'gradle-second-subject-demo'
+include 'gradle-third-subject-demo'
+
+// 1.settingsEvaluated钩子函数,在初始化阶段完成
+gradle.settingsEvaluated {
+    println "settingsEvaluated"
+}
+
+// 2.projectsLoaded钩子函数,在初始化阶段完成
+gradle.projectsLoaded {
+    println "projectsLoaded"
+}
+
+// 声明一个变量,表示当前项目名,在每次执行某个项目的beforeEvaluate方法时先给projectName变量赋值
+def projectName = ""
+gradle.addProjectEvaluationListener(new ProjectEvaluationListener() {
+    // 3.执行各个project的beforeEvaluate,在配置阶段完成
+    @Override
+    void beforeEvaluate(Project project) {
+        projectName = project.name
+        println "${project.name} project beforeEvaluate"
+    }
+
+    // 5.执行各个project的afterEvaluate,在配置阶段完成
+    @Override
+    void afterEvaluate(Project project, ProjectState state) {
+        println "${project.name} project afterEvaluate"
+    }
+})
+
+// 4.执行各个project的beforeProject,在配置阶段完成
+gradle.beforeProject {
+    println "${projectName} beforeProject"
+}
+
+// 6.执行各个project的afterProject,在配置阶段完成
+gradle.afterProject() {
+    println "${projectName} afterProject"
+}
+
+// 7.所有build.gradle执行完毕后，会回调Gradle对象的projectsEvaluate方法,在配置阶段完成
+def rootProjectName = rootProject.getName()
+gradle.projectsEvaluated {
+    println "${rootProjectName} projectsEvaluated"
+}
+
+// 8.配置阶段完成后，会回调TaskExcutionGraph对象的whenReady方法,在配置阶段完成
+gradle.taskGraph.whenReady {
+    println "${rootProjectName} taskGraph whenReady"
+}
+
+// 9.在当前Task执行之前，会回调TaskExcutionGraph对象的beforeTask方法,在执行阶段完成
+gradle.taskGraph.beforeTask {task -> {
+    println "this is the task ${task.name} of the project ${task.getProject().name} beforeTask"
+}}
+
+// 10.在当前Task执行之后，会回调TaskExcutionGraph对象的afterTask方法,在执行阶段完成
+gradle.taskGraph.afterTask() {task -> {
+    println "this is the task ${task.name} of the project ${task.getProject().name} afterTask"
+}}
+
+// 11.当所有的Task执行完毕后，会回调Gradle对象的buildFinish方法,在执行阶段完成
+gradle.buildFinished {
+    println "${rootProjectName} buildFinished"
+}

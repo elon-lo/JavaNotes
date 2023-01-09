@@ -1234,7 +1234,7 @@ Maven在构建的过程中有很多默认的设定。例如：源文件存放的
 | help:evaluate           | 计算用户在交互模式下给出的Maven表达式         |
 | help:system             | 显示平台详细信息列表，如系统属性和环境变量    |
 
-#### 2、使用`mvn help:evaluate`命令查看属性值
+#### 2、使用命令查看属性值
 
 ```markdown
 D:\DevSoftware\Java\JetBrains\IDEA2021\IdeaProjects\grain_college\grain_business\grain_business_edu>mvn help:evaluate
@@ -1668,7 +1668,7 @@ Idea是我们常用的开发工具，我们经常直接用Idea的插件来进行
   </mirrors>
   ```
 
-### 5、IDEA
+### 5、IDEA配置私服上传
 
 - 配置当前项目访问私服上传资源的保存位置（项目父pom.xml）
 

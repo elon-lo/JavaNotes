@@ -1,0 +1,43 @@
+plugins {
+    id 'java'
+}
+
+group 'com.yu.gradle'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+task B {
+    println "taskB..."
+    doFirst {
+        println "taskB doFirst..."
+    }
+
+    doLast {
+        println "taskB doLast..."
+    }
+}
+
+task C {
+    // 依赖B
+    dependsOn 'B'
+    println "taskC..."
+    doFirst {
+        println "taskC doFirst..."
+    }
+
+    doLast {
+        println "taskC doLast..."
+    }
+}

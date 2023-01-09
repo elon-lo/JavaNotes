@@ -1,0 +1,9 @@
+ext {
+    company = "华为技术有限公司"
+    cfgs = [
+            compileSdkVersion: JavaVersion.VERSION_1_8
+    ]
+    spring = [
+            version: '5.2.1'
+    ]
+}

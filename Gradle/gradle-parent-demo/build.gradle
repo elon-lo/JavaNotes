@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+}
+
+
+// 指定使用什么版本的JDK语法编译源代码,跟编译环境有关,在有Java插件时才能使用
+sourceCompatibility=JavaVersion.VERSION_1_8
+// 指定生成某个特定JDK版本的class文件,跟运行环境有关,在有Java插件时才能使用
+targetCompatibility=1.8
+// 指定编译源码解码的业务编码字符集[编译器]
+compileJava.options.encoding="UTF-8"
+// 指定编译源码解码时的测试编码字符集[编译器]
+compileTestJava.options.encoding="UTF-8"
+
+// 指定源码编码的字符集[源文件]
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+// 指定文档编码的字符集[源文件]
+tasks.withType(Javadoc) {
+    options.encoding = "UTF-8"
+}
+
+group 'com.yu.gradle'
+version '1.0-SNAPSHOT'
+
+//mainClassName = 'com.yu.gradle.GradleApplication'
+
+repositories {
+    mavenCentral()
+
+    // 指定去google仓库查找
+    google()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+
+    implementation 'org.hibernate:hibernate-core:3.6.3.Final'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+task A {
+    println "taskA..."
+    doFirst {
+        println "taskA doFirst..."
+    }
+
+    doLast {
+        println "taskA doLast..."
+    }
+}
+

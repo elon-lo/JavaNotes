@@ -1,0 +1,45 @@
+plugins {
+    id 'war'
+//    id 'org.gretty' version '2.2.0'
+}
+
+group 'com.yu.gradle'
+version '1.0-SNAPSHOT'
+
+repositories {
+    // 指定jcenter仓库，一定要放在前面
+//    jcenter()
+    mavenCentral()
+}
+
+//gretty{
+//    httpPort=8888
+//    contextPath="/web"
+//    // 默认端口为5005
+//    debugPort=5005
+//    // 默认为true
+//    debugSuspend=true
+//    httpsEnabled=true
+//    // 修改类之后重新加载
+//    managedClassReload=true
+//    // 如果不指定servlet容器,默认使用的是jetty容器,'jetty7', 'jetty8', 'jetty9', 'jetty93', 'jetty94', 'tomcat7', 'tomcat8'
+//    servletContainer='tomcat8'
+//    httpsPort=4431
+//}
+
+dependencies {
+    providedCompile 'javax.servlet:javax.servlet-api:3.1.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+}
+
+test {
+    // 是否开启测试,true:开启 false:关闭
+    enabled(true)
+    // 支持junit5测试
+    useJUnitPlatform()
+    // 执行指定包下的测试
+//    include("com/yu/gradle/test1/**")
+    // 排除指定包下的测试
+    exclude("com/yu/gradle/test1/**")
+}
