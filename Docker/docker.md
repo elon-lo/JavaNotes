@@ -519,12 +519,33 @@ $ docker search --limit 5 redis
       $ docker export CONTAINER ID > FILE NAME.tar
       ```
   
+      ```shell
+      $ docker export my-container > my-container.tar
+  
     - import：从tar包中的内容创建一个新的文件系统再导入为新的镜像
   
       ```shell
       $ cat FILE NAME.tar | docker import-IMAGE USER/IMAGE NAME:IMAGE VERSION
       ```
+      
+      ```shell
+      $ docker import my-container.tar my-new-container
+      ```
   
+  - 导入和导出镜像
+  
+    - save：可以使用 `docker save` 命令将镜像保存为 tar 文件
+    
+      ```shell
+      $ docker save my-image > my-image.tar
+      ```
+    
+    - load：可以使用 `docker load` 命令从镜像 tar 文件创建新镜像
+    
+      ```shell
+      $ docker load < my-image.tar
+      ```
+    
   - 常用命令
   
     ```shell
@@ -2571,7 +2592,7 @@ Compose 使用的三个步骤:
    Docker Compose version v2.6.0
    
    # 使用curl下载,卸载方法如下
-   $ rm -rf /usr/local/b
+   $ rm -rf /usr/local/bin/docker-compose
    ```
    
 
