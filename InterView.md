@@ -124,3 +124,29 @@ public static int feiBo(int n){
 
 ### 16、谈谈你对ThreadLocal的理解
 
+### 17、MySQL百万数据分页问题
+
+```sql
+SELECT 
+	id,
+	stu_name,
+	age,
+	sex,
+	create_time,
+	update_time,
+	remark 
+ from student 
+ WHERE id >= (249999-1)*20
+ ORDER by id asc
+ limit 1,20
+```
+
+### 18、Sql92语法多表连接时没有添加条件造成笛卡尔积问题
+
+### 19、为什么Java中Integer类型1000==1000为false而100==100为true
+
+### 20、雪花算法以Long类型返回给前端导致丢失精度
+
+在后端中为Long类型，在前端中为number类型。但是，Long和number的精度不一样；故，会导致数据精度丢失
+
+解决办法：Long类型转换位String类型返回
