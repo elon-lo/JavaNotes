@@ -2595,6 +2595,7 @@ Compose 使用的三个步骤:
    $ rm -rf /usr/local/bin/docker-compose
    ```
    
+   注意：推荐使用github下载的docker-compose，daocloud源下载有坑
 
 #### 3、Compose使用步骤
 
