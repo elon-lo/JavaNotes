@@ -9,7 +9,7 @@
 ## 章节索引
 
 - <a href="#lambda">lambda表达式</a>
-- <a href="#functionInterface">函数式接口</a>
+- <a href="#function-interface">函数式接口</a>
 - <a href="#methodReferences">方法引用与构造器引用</a>
 - <a href="#stream">Stream API</a>
 - <a href="#optional">Optional类</a>
@@ -103,7 +103,7 @@ Lambda表达式的参数相关类型取决于函数式接口中定义的方法�
   Comparator<Integer> com2 = Integer::compare;
   ```
 
-## <span id="functionInterface">函数式接口</span>
+## <span id="function-interface">函数式接口</span>
 
 接口中`有且仅有一个抽象方法`的接口，但是可以有多个非抽象方法的接口称为函数式接口。可以使用@FunctionalInterface注解修饰检查是否是函数式接口。
 
