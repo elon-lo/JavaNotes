@@ -9,12 +9,12 @@
 ## 章节索引
 
 - <a href="#lambda">lambda表达式</a>
-- <a href="#functionInterface">函数式接口</a>
-- <a href="#methodReferences">方法引用与构造器引用</a>
+- <a href="#function-interface">函数式接口</a>
+- <a href="#method-references">方法引用与构造器引用</a>
 - <a href="#stream">Stream API</a>
 - <a href="#optional">Optional类</a>
-- <a href="#defaultMethod">接口中的默认方法与静态方法</a>
-- <a href="#newDate">新时间日期API</a>
+- <a href="#default-method">接口中的默认方法与静态方法</a>
+- <a href="#new-date">新时间日期API</a>
 - <a href="#other">其他新特性</a>
 
 ## <span id="lambda">Lambda表达式</span>
@@ -54,11 +54,11 @@ Lambda表达式的参数相关类型取决于函数式接口中定义的方法�
   Consumer<String> con = (x) -> System.out.println(x);
   con.accept("Hello");
   ```
-  
+
   ```java
   Consumer<String> con1 = x -> System.out.println(x);
   ```
-  
+
 - 有两个参数，无返回值
 
   ```java
@@ -103,7 +103,7 @@ Lambda表达式的参数相关类型取决于函数式接口中定义的方法�
   Comparator<Integer> com2 = Integer::compare;
   ```
 
-## <span id="functionInterface">函数式接口</span>
+## <span id="function-interface">函数式接口</span>
 
 接口中`有且仅有一个抽象方法`的接口，但是可以有多个非抽象方法的接口称为函数式接口。可以使用@FunctionalInterface注解修饰检查是否是函数式接口。
 
@@ -188,7 +188,7 @@ Java中的函数式接口都在`java.util.function`包中，其中常用的四�
   }
   ```
 
-## <span id="methodReferences">方法引用与构造器引用</span>
+## <span id="method-references">方法引用与构造器引用</span>
 
 方法引用的特点如下：
 
@@ -1153,7 +1153,7 @@ Java 8引入了Stream API，其中包含了`归约（Reduction）`和`收集（C
       System.out.println(collect);
   }
   ```
-  
+
 - `reducing(T identity, BinaryOperator<T> op)`：`reducing`方法接收两个参数：一个初始值，一个函数，用于对流中的元素进行操作，以及一个用于收集结果的收集器。它将流中的元素进行操作，并将操作结果收集到指定的收集器中。
 
   ```java
@@ -1568,7 +1568,7 @@ public void test13() {
 }
 ```
 
-## <span id="defaultMethod">接口中的默认方法与静态方法</span>
+## <span id="default-method">接口中的默认方法与静态方法</span>
 
 **默认方法（Default Method）**
 
@@ -1678,7 +1678,7 @@ public static void main(String[] args) {
 }
 ```
 
-## <span id="newDate">新时间日期API</span>
+## <span id="new-date">新时间日期API</span>
 
 LocalDate、LocalTime、LocalDateTime类的实例是**不可变的对象**，分别表示使用`ISO-8601`日历系统(ISO-8601日历系统是国际标准化组织制定的现代公民的日期和时间的表示法)的日期、时间、日期和时间。它们提供了简单的日期或时间，并不包括当前的时间信息。也不包含与时区相关的信息。
 
