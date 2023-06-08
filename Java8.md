@@ -15,7 +15,8 @@
 - <a href="#optional">Optional类</a>
 - <a href="#default-method">接口中的默认方法与静态方法</a>
 - <a href="#new-date">新时间日期API</a>
-- <a href="#other">其他新特性</a>
+- <a href="#annotation">重复注解</a>
+- <a href="#base64">Base64编码</a>
 
 ## <span id="lambda">Lambda表达式</span>
 
@@ -2576,4 +2577,70 @@ public void test3() {
   }
   ```
 
-## <span id="other">其他新特性</span>
+## <span id="annotation">重复注解</span>
+
+重复注解允许在同一个元素上多次使用相同的注解类型。在Java8之前，同一个注解类型只能在一个元素上使用一次，如果需要使用多次，就需要自定义容器注解来包含多个注解实例。而使用重复注解，可以直接在同一个元素上多次使用同一个注解类型，简化了代码结构。
+
+```java
+@Target({TYPE, FIELD, METHOD, PARAMETER, CONSTRUCTOR, LOCAL_VARIABLE})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Fruits {
+
+    Fruit[] value();
+}
+```
+
+```java
+@Target({TYPE, FIELD, METHOD, PARAMETER, CONSTRUCTOR, LOCAL_VARIABLE})
+@Retention(RetentionPolicy.RUNTIME)
+@Repeatable(Fruits.class)
+public @interface Fruit {
+    String value() default "zs";
+}
+```
+
+```java
+public class FruitBasket {
+
+    @Test
+    public void test1() throws NoSuchMethodException {
+        Class<FruitBasket> fruitBasketClass = FruitBasket.class;
+        Method method = fruitBasketClass.getMethod("show");
+        Fruit[] annotations = method.getAnnotationsByType(Fruit.class);
+        for (Fruit annotation : annotations) {
+            System.out.println(annotation.value());
+        }
+    }
+
+    @Fruit("apple")
+    @Fruit("orange")
+    public void show() {
+        
+    }
+}
+```
+
+## <span id="base64">Base64编码</span>
+
+在Java8中，`Base64`编码是一种将二进制数据转换为可打印ASCII字符的编码方式。Java8提供了`Base64`类来进行Base64`编码`和`解码`操作。
+
+- `Base64.getEncoder()`：获取Base64编码器实例。
+- `Base64.getDecoder()`：获取Base64解码器实例。
+- `Base64.getEncoder().encodeToString()`：将字节数组进行Base64编码，并返回编码后的字符串。
+- `Base64.getDecoder().decode()`：将Base64编码的字符串进行解码，并返回解码后的字节数组。
+
+```java
+@Test
+public void test1() {
+    final String originalString = "hello";
+
+    // 编码
+    String encodeString = Base64.getEncoder().encodeToString(originalString.getBytes(StandardCharsets.UTF_8));
+    System.out.println("Encode String: " + encodeString);
+
+    // 解码
+    byte[] decode = Base64.getDecoder().decode(encodeString);
+    String decodedString = new String(decode);
+    System.out.println("Decoded String: " + decodedString);
+}
+```
