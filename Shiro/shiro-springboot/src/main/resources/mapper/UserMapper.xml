@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yu.shiro.mapper.UserMapper">
+
+    <select id="selectRolesByUsername" resultType="java.lang.String" parameterType="java.lang.String">
+        SELECT
+            r.role_name
+        FROM
+            user_role ur
+        LEFT JOIN `user` u ON
+            ur.user_id = u.user_id
+        LEFT JOIN `role` r ON
+            ur.role_id = r.role_id
+        WHERE
+            u.username = #{username}
+    </select>
+
+    <select id="selectPermissionsByRoleNames" resultType="java.lang.String">
+        SELECT
+            p.url
+        FROM
+            role_permission rp
+        LEFT JOIN `role` r ON
+            rp.role_id = r.role_id
+        LEFT JOIN permission p ON
+            rp.permission_id = p.permission_id
+        WHERE
+            r.role_name IN
+        <foreach item="name" collection="roleNames" open="(" separator="," close=")">
+            #{name}
+        </foreach>
+        GROUP BY p.url
+    </select>
+</mapper>

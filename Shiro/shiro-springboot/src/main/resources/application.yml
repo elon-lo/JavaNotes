@@ -1,0 +1,25 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /shiro
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    cache-enabled: false
+  mapper-locations: classpath:mapper/*.xml
+
+spring:
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://elonlo.dynv6.net:29502/shiro?characterEncoding=utf8&useSSL=false&useUnicode=true
+    username: root
+    password: yu993844
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+shiro:
+  loginUrl: /user/login
