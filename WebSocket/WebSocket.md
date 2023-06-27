@@ -479,11 +479,10 @@ Endpoint 实例在 WebSocket 握手时创建，并在客户端与服务器链接
         * 群发自定义消息
         */
        public static void sendInfo(String message, @PathParam("sid") String sid) {
-   
            for (WebSocketServer item : webSocketSet) {
                try {
                    // 这里可以设定只推送给这个sid的，为null则全部推送
-                   if (sid == null) {
+                   if (sid == null || "".equals(sid)) {
                        log.info("推送消息到所有客户端,推送内容:" + message);
                        item.sendMessage(message);
                    } else if (sid.equals(item.sid)) {
@@ -514,17 +513,27 @@ Endpoint 实例在 WebSocket 握手时创建，并在客户端与服务器链接
        }
    }
    ```
-
+   
    ```java
    @Controller
    @RequestMapping("/ws")
    public class WebSocketController {
    
        /**
+        * 访问websocket连接页面
+        *
+        * @return {@link String}
+        */
+       @GetMapping("/main")
+       public String main() {
+           return "main";
+       }
+   
+       /**
         * 服务器主动推送消息
         *
-        * @param cid       推送消息的指定客户端id
-        * @param message   推送消息
+        * @param cid     推送消息的指定客户端id
+        * @param message 推送消息
         * @return {@link Map}<{@link String}, {@link Object}>
         */
        @ResponseBody
@@ -539,6 +548,7 @@ Endpoint 实例在 WebSocket 握手时创建，并在客户端与服务器链接
            }
            result.put("code", cid);
            result.put("msg", message);
+   
            return result;
        }
    }
