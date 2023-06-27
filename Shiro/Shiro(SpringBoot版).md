@@ -49,7 +49,7 @@
            <maven.compiler.target>8</maven.compiler.target>
            <shiro.starter.version>1.9.0</shiro.starter.version>
            <mybatis-plus.version>3.0.5</mybatis-plus.version>
-           <mysql.version>5.1.46</mysql.version>
+           <mysql.version>8.0.32</mysql.version>
        </properties>
    
        <dependencies>
