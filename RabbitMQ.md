@@ -2066,3 +2066,1452 @@ Fanout 这种类型非常简单。它是将接收到的所有消息**广播**到
 4. 用户发起退款，如果三天内没有得到处理则通知相关运营人员
 5. 预定会议后，需要在预定的时间点前十分钟通知各个参会人员参加会议
 
+上述这些场景为什么要使用队列呢？使用轮询一样可以达到这种效果，但是在大数据量的情况下，比如在活动的时候，可能短时间内会产生百万级的消息，这时候使用轮询来处理就显得力不从心了，而且时效性无法保证，对数据库的压力也比较大。
+
+### 7.3.整合 SpringBoot
+
+#### 7.3.1.添加依赖
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.yu.rabbit</groupId>
+    <artifactId>spring-boot-rabbitmq</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>spring-boot-rabbitmq</name>
+    <description>Demo project for Spring Boot</description>
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <spring-boot.version>2.3.12.RELEASE</spring-boot.version>
+        <fastjson.version>1.2.83</fastjson.version>
+        <knife4j.version>3.0.3</knife4j.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>${fastjson.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-spring-boot-starter</artifactId>
+            <version>${knife4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.amqp</groupId>
+            <artifactId>spring-rabbit-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <configuration>
+                    <mainClass>com.yu.rabbit.RabbitmqApplication</mainClass>
+                    <skip>true</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+```
+
+#### 7.3.2.修改配置文件
+
+```yaml
+server:
+  port: 9020
+  servlet:
+    context-path: /rabbit
+
+# rabbitmq
+spring:
+  rabbitmq:
+    host: xxx
+    port: xxx
+    username: admin
+    password: admin
+```
+
+#### 7.3.3.添加 swagger 配置
+
+```java
+/**
+ * Swagger配置类
+ */
+@EnableSwagger2
+@Configuration
+public class SwaggerConfig {
+
+    @Bean
+    public Docket webApi() {
+        return new Docket(DocumentationType.SWAGGER_2)
+                .groupName("webApi")
+                .apiInfo(webApiInfo())
+                .select()
+                .apis(RequestHandlerSelectors.basePackage("com.yu.rabbit.controller"))
+                .paths(PathSelectors.any())
+                .build();
+    }
+
+    private ApiInfo webApiInfo() {
+        return new ApiInfoBuilder()
+                .title("rabbitmq开发文档")
+                .description("本文档描述了rabbitmq服务接口定义")
+                .version("1.0")
+                .licenseUrl("http://localhost:9020/rabbit/doc.html")
+                .contact(new Contact("elonlo", "http://localhost:9020", ""))
+                .build();
+    }
+}
+```
+
+### 7.4. 队列 TTL
+
+#### 7.4.1.延迟队列案例
+
+创建两个队列 `cat` 和 `dog`，两个队列 TTL 分别设置为 10s 和 20s，然后再创建一个交换机 `home` 和死信交换机 `zoom`，它们的类型都是 direct，创建一个死信队列 `wolf`，它们的绑定关系如下：
+
+![image-20231202232926160](https://image.elonlo.top/img/2023/12/02/656b4d5f16756.png)
+
+#### 7.4.2.配置文件类
+
+```java
+/**
+ * ttl队列配置文件
+ *
+ * @author elonlo
+ * @date 2023/12/2 23:33
+ */
+@Configuration
+public class TtlQueueConfig {
+
+    // 普通交换机
+    public static final String HOME_EXCHANGE = "home";
+
+    // 死信交换机
+    public static final String DEAD_LETTER_EXCHANGE = "zoom";
+
+    // 普通队列
+    public static final String CAT_QUEUE = "cat";
+    public static final String DOG_QUEUE = "dog";
+
+    // 死信队列
+    public static final String DEAD_LETTER_QUEUE = "wolf";
+
+    /**
+     * 声明普通交换机
+     */
+    @Bean("homeExchange")
+    public DirectExchange homeExchange() {
+        return new DirectExchange(HOME_EXCHANGE);
+    }
+
+    /**
+     * 声明死信交换机
+     */
+    @Bean("zoomExchange")
+    public DirectExchange zoomExchange() {
+        return new DirectExchange(DEAD_LETTER_EXCHANGE);
+    }
+
+    /**
+     * 声明普通队列 ttl 10s
+     */
+    @Bean("cat")
+    public Queue cat() {
+        Map<String, Object> map = new HashMap<>(4);
+        // 设置死信交换机
+        map.put("x-dead-letter-exchange", DEAD_LETTER_EXCHANGE);
+        // 设置死信routingKey
+        map.put("x-dead-letter-routing-key", "food");
+        // 设置过期时间
+        map.put("x-message-ttl", 10000);
+        return QueueBuilder.durable(CAT_QUEUE).withArguments(map).build();
+    }
+
+    /**
+     * 声明普通队列 ttl 20s
+     */
+    @Bean("dog")
+    public Queue dog() {
+        Map<String, Object> map = new HashMap<>(4);
+        // 设置死信交换机
+        map.put("x-dead-letter-exchange", DEAD_LETTER_EXCHANGE);
+        // 设置死信routingKey
+        map.put("x-dead-letter-routing-key", "food");
+        // 设置过期时间
+        map.put("x-message-ttl", 20000);
+        return QueueBuilder.durable(DOG_QUEUE).withArguments(map).build();
+    }
+
+    /**
+     * 声明死信队列
+     */
+    @Bean("wolf")
+    public Queue wolf() {
+        return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
+    }
+
+    /**
+     * cat队列绑定home交换机
+     */
+    @Bean
+    public Binding catQueueBindingHomeExchange(@Qualifier("cat") Queue cat, @Qualifier("homeExchange") DirectExchange homeExchange) {
+        return BindingBuilder.bind(cat).to(homeExchange).with("fish");
+    }
+
+    /**
+     * dog队列绑定home交换机
+     */
+    @Bean
+    public Binding dogQueueBindingZoomExchange(@Qualifier("dog") Queue dog, @Qualifier("homeExchange") DirectExchange homeExchange) {
+        return BindingBuilder.bind(dog).to(homeExchange).with("bitterness");
+    }
+
+    /**
+     * wolf队列绑定zoom交换机
+     */
+    @Bean
+    public Binding wolfQueueBindingZoomExchange(@Qualifier("wolf") Queue wolf, @Qualifier("zoomExchange") DirectExchange zoomExchange) {
+        return BindingBuilder.bind(wolf).to(zoomExchange).with("food");
+    }
+}
+```
+
+#### 7.4.3.生产者（TTL）
+
+```java
+/**
+ * 消息控制器
+ *
+ * @author elonlo
+ * @date 2023/12/3 0:12
+ */
+@Slf4j
+@RestController
+@RequestMapping("/ttl")
+public class MessageController {
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @GetMapping("/sendMsg/{message}")
+    public String sendMsg(@PathVariable("message") String message) {
+        log.info("当前时间为: {}, 发送一条消息给两个TTL队列,消息内容为: {}", LocalDateTime.now(), message);
+        rabbitTemplate.convertAndSend("home", "fish", "消息来自ttl为10s的队列: " + message);
+        rabbitTemplate.convertAndSend("home", "bitterness", "消息来自ttl为20s的队列: " + message);
+        return "发送成功!";
+    }
+}
+```
+
+#### 7.4.4.消费者（TTL）
+
+```java
+/**
+ * 死信队列消费者
+ *
+ * @author elonlo
+ * @date 2023/12/3 0:19
+ */
+@Slf4j
+@Component
+public class DeadQueueConsumer {
+
+    /**
+     * 接收消息
+     */
+    @RabbitListener(queues = "wolf")
+    public void receiveMsg(Message message, Channel channel) {
+        log.info("当前时间为: {}, 死信队列收到了消息: {}", LocalDateTime.now(), new String(message.getBody(), StandardCharsets.UTF_8));
+    }
+}
+```
+
+### 7.5.延时队列优化
+
+#### 7.5.1.优化方法
+
+在前面的案例中，我们在声明队列时就设置了死信过期时间，这样有个最大的坏处，就是如果要重新修改过期时间，需要重新声明队列。于是我们可以声明一个普通队列，在生产者发送消息的时候指定过期时间，这样就做到了通用性。
+
+#### 7.5.2.配置文件类
+
+```java
+/**
+ * ttl队列配置文件
+ *
+ * @author elonlo
+ * @date 2023/12/2 23:33
+ */
+@Configuration
+public class TtlQueueConfig {
+
+    // 普通交换机
+    public static final String HOME_EXCHANGE = "home";
+
+    // 死信交换机
+    public static final String DEAD_LETTER_EXCHANGE = "zoom";
+
+    // 普通队列
+    public static final String ANIMAL_QUEUE = "animal";
+
+    // 死信队列
+    public static final String DEAD_LETTER_QUEUE = "wolf";
+
+    /**
+     * 声明普通交换机
+     */
+    @Bean("homeExchange")
+    public DirectExchange homeExchange() {
+        return new DirectExchange(HOME_EXCHANGE);
+    }
+
+    /**
+     * 声明死信交换机
+     */
+    @Bean("zoomExchange")
+    public DirectExchange zoomExchange() {
+        return new DirectExchange(DEAD_LETTER_EXCHANGE);
+    }
+
+    /**
+     * 声明通用队列 不设置ttl
+     */
+    @Bean("animal")
+    public Queue animal() {
+        Map<String, Object> map = new HashMap<>(4);
+        // 设置死信交换机
+        map.put("x-dead-letter-exchange", DEAD_LETTER_EXCHANGE);
+        // 设置死信routingKey
+        map.put("x-dead-letter-routing-key", "food");
+        return QueueBuilder.durable(ANIMAL_QUEUE).withArguments(map).build();
+    }
+
+    /**
+     * 声明死信队列
+     */
+    @Bean("wolf")
+    public Queue wolf() {
+        return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
+    }
+
+    /**
+     * animal队列绑定home交换机
+     */
+    @Bean
+    public Binding animalQueueBindingZoomExchange(@Qualifier("animal") Queue animal, @Qualifier("homeExchange") DirectExchange homeExchange) {
+        return BindingBuilder.bind(animal).to(homeExchange).with("eat");
+    }
+}
+```
+
+#### 7.5.3.生产者
+
+```java
+@Slf4j
+@RestController
+@RequestMapping("/ttl")
+public class MessageController {
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @GetMapping("/sendExMsg/{ttlTime}/{message}")
+    public String sendTtlMsg(@PathVariable("ttlTime") String ttlTime, @PathVariable("message") String message) {
+        log.info("当前时间为: {}, 发送一条消息耗时{}的队列,消息内容为: {}", LocalDateTime.now(), ttlTime, message);
+        rabbitTemplate.convertAndSend("home", "eat", message, msg -> {
+            msg.getMessageProperties().setExpiration(ttlTime);
+            return msg;
+        });
+        return "发送成功!";
+    }
+}
+```
+
+看起来是没有什么问题，但是如果在消息属性上设置 TTL，消息可能并不会按时`过期`，因为 RabbitMQ 只会**检查第一个消息是否过期**，如果过期则丢到死信队列，当第一个消息的**延时时间很长**，而第二个消息的**延时时间很短**，第二个消息将不会**优先得到执行**。
+
+### 7.6.RabbitMQ 插件实现延迟队列
+
+#### 7.6.1.安装延时队列插件
+
+1. 官网地址https://www.rabbitmq.com/community-plugins.html下载延迟队列插件
+
+   ![image-20231203202026459](https://image.elonlo.top/img/2023/12/03/656c72919bdd4.png)
+
+2. 上传到容器中插件目录
+
+   ![image-20231203202237348](https://image.elonlo.top/img/2023/12/03/656c730d4a56e.png)
+
+   ```bash
+   docker cp rabbitmq_delayed_message_exchange-3.9.0.ez yu_rabbitmq:/plugins
+   ```
+
+   ![image-20231203202505361](https://image.elonlo.top/img/2023/12/03/656c73a137932.png)
+
+3. 启用插件
+
+   在容器中`plugins`目录下执行以下命令启用插件：
+
+   ```bash
+   rabbitmq-plugins enable rabbitmq_delayed_message_exchange
+   ```
+
+   ![image-20231203203042074](https://image.elonlo.top/img/2023/12/03/656c74f296134.png)
+
+4. 重启容器
+
+#### 7.6.2.插件延迟队列案例
+
+![image-20231203210636119](https://image.elonlo.top/img/2023/12/03/656c7d5c3e74d.png)
+
+#### 7.6.3.配置文件类
+
+在我们自定义的交换机中，这是一种新的交换机类型，该类型消息支持延迟投递机制，消息传递后并**不会立即投递到目标队列**中，而是**存储在 mnesia（一个分布式数据系统）表**中，当**达到投递时间**时，才**投递到目标队列**中。
+
+```java
+/**
+ * 延迟队列配置类
+ *
+ * @author elonlo
+ * @date 2023/12/3 21:44
+ */
+@Configuration
+public class DelayedQueueConfig {
+
+    /**
+     * 延迟队列
+     */
+    public static final String DELAYED_QUEUE_NAME = "delayed.queue";
+
+    /**
+     * 延迟队列交换机
+     */
+    public static final String DELAYED_EXCHANGE_NAME = "delayed.exchange";
+
+    /**
+     * 延迟队列routingKey
+     */
+    public static final String DELAYED_ROUTING_KEY = "delayed.routingkey";
+
+    /**
+     * 声明延迟队列
+     */
+    @Bean
+    public Queue delayedQueue() {
+        return QueueBuilder.durable(DELAYED_QUEUE_NAME).build();
+    }
+
+    /**
+     * 声明延迟交换机
+     * name         交换机名称
+     * type         交换机类型
+     * durable      是否持久化
+     * autoDelete   是否自动删除
+     * arguments    其他参数
+     */
+    @Bean
+    public CustomExchange delayedExchange() {
+        Map<String, Object> map = new HashMap<>(4);
+        map.put("x-delayed-type", "direct");
+        return new CustomExchange(DELAYED_EXCHANGE_NAME, "x-delayed-message", true, false, map);
+    }
+
+    /**
+     * 绑定延迟队列与交换机
+     */
+    @Bean
+    public Binding delayedQueueBindingdelayedExchange(@Qualifier("delayedQueue") Queue delayedQueue,
+                                                      @Qualifier("delayedExchange") CustomExchange delayedExchange) {
+        return BindingBuilder.bind(delayedQueue).to(delayedExchange).with(DELAYED_ROUTING_KEY).noargs();
+    }
+}
+```
+
+#### 7.6.4.生产者（Delayed）
+
+```java
+@GetMapping("/sendDelayMsg/{delayTime}/{message}")
+public String sendDelayMsg(@PathVariable("delayTime") Integer delayTime, @PathVariable("message") String message) {
+    log.info("当前时间为: {}, 发送一条消息耗时{}ms的延迟队列,消息内容为: {}", LocalDateTime.now(), delayTime, message);
+    rabbitTemplate.convertAndSend(DelayedQueueConfig.DELAYED_EXCHANGE_NAME, DelayedQueueConfig.DELAYED_ROUTING_KEY, message, msg -> {
+        // 设置消息延迟时间
+        msg.getMessageProperties().setDelay(delayTime);
+        return msg;
+    });
+    return "发送成功!";
+}
+```
+
+#### 7.6.5.消费者（Delayed）
+
+```java
+/**
+ * 基于插件的延迟队列-消费者
+ *
+ * @author elonlo
+ * @date 2023/12/3 22:09
+ */
+@Slf4j
+@Component
+public class DelayedQueueConsumer {
+
+    /**
+     * 接收延迟队列消息
+     */
+    @RabbitListener(queues = DelayedQueueConfig.DELAYED_QUEUE_NAME)
+    public void receiveDelayedQueueMessage(Message message) {
+        log.info("当前时间为: {}, 延迟队列收到了消息: {}", LocalDateTime.now(), new String(message.getBody(), StandardCharsets.UTF_8));
+    }
+}
+```
+
+![image-20231203221541264](https://image.elonlo.top/img/2023/12/03/656c8d8d7e3d8.png)
+
+### 7.7.总结
+
+延迟队列在需要延时处理的场景下非常有用，使用 RabbiMQ 来实现延迟队列可以很好的利用 RabbitMQ 的特性。如消息可靠发送、可靠传递、死信队列来保障消息至少被消费一次以及未被正确处理的消息不会被丢弃。另外，通过 RabbitMQ 集群的特性，可以很好的解决单点故障问题，不会因为单个节点挂掉导致延迟队列不可用或消息丢失。
+
+延迟队列也有其他选择。比如利用 Java 的 DelayedQueue、Redis 的 zset，Quartz，或者 Kafka 的时间轮，这些方式各有各的特点，适用于不同的场景。
+
+## 8.发布确认高级
+
+在生产环境中由于一些不明原因，导致 RabbitMQ 重启，在 RabbitMQ 重启期间生产者投递消息失败，导致消息丢失，需要手动处理和恢复。那么如何才能进行 RabbitMQ 的消息可靠投递呢？特别是在这种比较极端的情况，RabbitMQ 集群不可用的时候，无法投递的消息该如何处理呢？
+
+### 8.1.确认机制
+
+#### 8.1.1.流程图
+
+![image-20231204220707237](https://image.elonlo.top/img/2023/12/04/656ddd135fc96.png)
+
+#### 8.1.2.配置文件
+
+发布确认类型有三种模式，`NONE`、`CORRELATED`、`SIMPLE`，默认是`NONE`模式，我们需要将其设置为`CORRELATED`。
+
+```yaml
+spring:
+  rabbitmq:
+  	# 发布确认类型-生产者确认
+    publisher-confirm-type: correlated
+```
+
+- NONE
+
+  禁用发布确认模式，默认值
+
+- CORRELATED
+
+  发布消息成功到交换机后会触发回调方法
+
+- SIMPLE
+
+  简单模式，同步机制
+
+#### 8.1.3.添加配置类
+
+```java
+/**
+ * 发布确认配置类
+ *
+ * @author elonlo
+ * @date 2023/12/4 22:42
+ */
+@Configuration
+public class ConfirmConfig {
+
+    /**
+     * 队列
+     */
+    public static final String CONFIRM_QUEUE = "confirm.queue";
+
+    /**
+     * 交换机
+     */
+    public static final String CONFIRM_EXCHANGE = "confirm.exchange";
+
+    /**
+     * routingKey
+     */
+    public static final String CONFIRM_ROUTING_KEY = "confirm.routingkey";
+
+    /**
+     * 声明队列
+     */
+    @Bean("confirmQueue")
+    public Queue confirmQueue() {
+        return QueueBuilder.durable(CONFIRM_QUEUE).build();
+    }
+
+    /**
+     * 声明交换机
+     */
+    @Bean("confirmExchange")
+    public DirectExchange confirmExchange() {
+        return new DirectExchange(CONFIRM_EXCHANGE);
+    }
+
+    /**
+     * 队列绑定交换机
+     */
+    @Bean
+    public Binding confirmQueueBindingConfirmExchange(@Qualifier("confirmQueue") Queue confirmQueue,
+                                                      @Qualifier("confirmExchange") DirectExchange confirmExchange) {
+        return BindingBuilder.bind(confirmQueue).to(confirmExchange).with(CONFIRM_ROUTING_KEY);
+    }
+}
+```
+
+#### 8.1.4.消息生产者
+
+```java
+/**
+ * 发布确认-生产者
+ *
+ * @author elonlo
+ * @date 2023/12/4 22:48
+ */
+@Slf4j
+@RestController
+@RequestMapping("/confirm")
+public class ConfirmController {
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @GetMapping("/sendMsg/{message}")
+    public String sendMsg(@PathVariable String message) {
+        rabbitTemplate.convertAndSend(ConfirmConfig.CONFIRM_EXCHANGE, ConfirmConfig.CONFIRM_ROUTING_KEY, message);
+        log.info("生产者发送消息为: {}", message);
+        return "发送成功!";
+    }
+}
+```
+
+#### 8.1.5.回调接口
+
+```java
+/**
+ * 发布确认-确认回调
+ *
+ * @author elonlo
+ * @date 2023/12/4 23:14
+ */
+@Slf4j
+@Component
+public class ConfirmCallBack implements RabbitTemplate.ConfirmCallback {
+    
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @PostConstruct
+    public void init() {
+        rabbitTemplate.setConfirmCallback(this);
+    }
+
+    /**
+     * 交换机确认回调方法
+     *
+     * @param correlationData 保存回调消息的ID及相关信息
+     * @param ack             交换机是否收到消息 true-是 false-否
+     * @param cause           未收到消息原因
+     */
+    @Override
+    public void confirm(CorrelationData correlationData, boolean ack, String cause) {
+        String id = Optional.ofNullable(correlationData).map(CorrelationData::getId).orElse("");
+        if (ack) {
+            log.info("已收到消息id为{}的消息", id);
+        } else {
+            log.info("未收到消息id为{}的消息,原因如下: {}", id, cause);
+        }
+    }
+}
+```
+
+#### 8.1.6.消息消费者
+
+```java
+/**
+ * 发布确认-消费者
+ *
+ * @author elonlo
+ * @date 2023/12/4 22:51
+ */
+@Slf4j
+@Component
+public class ConfirmConsumer {
+
+    @RabbitListener(queues = ConfirmConfig.CONFIRM_QUEUE)
+    public void receiveConfirmMessage(Message message) {
+        log.info("接收到confirm.queue队列的消息: {}", new String(message.getBody(), StandardCharsets.UTF_8));
+    }
+}
+```
+
+#### 8.1.7.交换机确认
+
+- 确认成功
+
+  发送一条正确配置的消息，携带`CorrelationData`参数
+
+  ```java
+  /**
+   * 发布确认控制器
+   *
+   * @author elonlo
+   * @date 2023/12/4 22:48
+   */
+  @Slf4j
+  @RestController
+  @RequestMapping("/confirm")
+  public class ConfirmController {
+  
+      @Resource
+      private RabbitTemplate rabbitTemplate;
+  
+      @GetMapping("/sendMsg/{message}")
+      public String sendMsg(@PathVariable String message) {
+          // 设置回调id
+          CorrelationData correlationData = new CorrelationData();
+          correlationData.setId("zs");
+          rabbitTemplate.convertAndSend(ConfirmConfig.CONFIRM_EXCHANGE, ConfirmConfig.CONFIRM_ROUTING_KEY, message, correlationData);
+          log.info("生产者发送消息为: {}", message);
+          return "发送成功!";
+      }
+  }
+  ```
+
+  ![image-20231206095734175](https://image.elonlo.top/img/2023/12/06/656fd5177cb79.png)
+
+- 确认失败
+
+  - 交换机不存在
+
+    模拟发送一条失败的消息，修改为错误的交换机名称，携带`CorrelationData`参数
+
+    ```java
+    /**
+     * 发布确认控制器
+     *
+     * @author elonlo
+     * @date 2023/12/4 22:48
+     */
+    @Slf4j
+    @RestController
+    @RequestMapping("/confirm")
+    public class ConfirmController {
+    
+        @Resource
+        private RabbitTemplate rabbitTemplate;
+    
+        @GetMapping("/sendMsg/{message}")
+        public String sendMsg(@PathVariable String message) {
+            // 设置回调id
+            CorrelationData correlationData = new CorrelationData();
+            correlationData.setId("zs");
+            rabbitTemplate.convertAndSend(ConfirmConfig.CONFIRM_EXCHANGE + "abcd", ConfirmConfig.CONFIRM_ROUTING_KEY, message, correlationData);
+            log.info("生产者发送消息为: {}", message);
+            return "发送成功!";
+        }
+    }
+    ```
+
+    ![image-20231206100050243](https://image.elonlo.top/img/2023/12/06/656fd5d31ca15.png)
+
+  - 路由键不存在
+
+    模拟发送一条失败的消息，修改为错误的路由键名称，携带`CorrelationData`参数
+
+    ![image-20231206101442906](https://image.elonlo.top/img/2023/12/06/656fd9138fb7a.png)
+
+    可以看到由于**路由键**错误，导致**交换机与队列之间绑定失败**，消费者队列无法接收到生产者发送的消息，消息丢失了。
+
+### 8.2.回退消息
+
+#### 8.2.1.Mandatory 参数
+
+在**仅开启了生产者确认机制**的情况下，交换机接收到消息后，会直接给消息生产者发送确认消息，如果发现**该消息不可路由**，那么**消息会被直接丢弃**，此时**生产者是不知道消息被丢弃**这个事件的。可以通过设置 `Mandatory` 参数，当**消息传递过程中不可达目的地时将消息返回给生产者**。
+
+#### 8.2.2.配置文件
+
+```yaml
+spring:
+  rabbitmq:
+    # 发布确认类型-生产者确认
+    publisher-confirm-type: correlated
+    # 开启发布确认失败后回退消息机制
+    publisher-returns: true
+```
+
+#### 8.2.3.消息生产者
+
+```java
+/**
+ * 发布确认控制器
+ *
+ * @author elonlo
+ * @date 2023/12/4 22:48
+ */
+@Slf4j
+@RestController
+@RequestMapping("/confirm")
+public class ConfirmController {
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @GetMapping("/sendMsg/{message}")
+    public String sendMsg(@PathVariable String message) {
+        // 设置回调id
+        CorrelationData correlationData = new CorrelationData();
+        correlationData.setId("zs");
+        rabbitTemplate.convertAndSend(ConfirmConfig.CONFIRM_EXCHANGE + "abcd", ConfirmConfig.CONFIRM_ROUTING_KEY, message, correlationData);
+        log.info("生产者发送消息为: {}", message);
+        return "发送成功!";
+    }
+}
+```
+
+#### 8.2.4.回调接口
+
+```java
+/**
+ * 发布确认-确认回调
+ *
+ * @author elonlo
+ * @date 2023/12/4 23:14
+ */
+@Slf4j
+@Component
+public class ConfirmCallBack implements RabbitTemplate.ConfirmCallback, RabbitTemplate.ReturnCallback {
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @PostConstruct
+    public void init() {
+        rabbitTemplate.setConfirmCallback(this);
+        rabbitTemplate.setReturnCallback(this);
+    }
+
+    /**
+     * 交换机确认回调方法
+     *
+     * @param correlationData 保存回调消息的ID及相关信息
+     * @param ack             交换机是否收到消息 true-是 false-否
+     * @param cause           未收到消息原因
+     */
+    @Override
+    public void confirm(CorrelationData correlationData, boolean ack, String cause) {
+        String id = Optional.ofNullable(correlationData).map(CorrelationData::getId).orElse("");
+        if (ack) {
+            log.info("交换机已收到消息id为{}的消息", id);
+        } else {
+            log.info("交换机未收到消息id为{}的消息,原因如下: {}", id, cause);
+        }
+    }
+
+    /**
+     * 回退消息（只有当消息不可达时才进行回退）
+     *
+     * @param message    回退的消息
+     * @param replyCode  回复code
+     * @param replyText  回复内容
+     * @param exchange   交换机
+     * @param routingKey 路由键
+     */
+    @Override
+    public void returnedMessage(Message message, int replyCode, String replyText, String exchange, String routingKey) {
+        log.error("消息{}被交换机{}退回,退回原因: {},路由key: {}",
+                new String(message.getBody(), StandardCharsets.UTF_8), exchange, replyText, routingKey);
+    }
+}
+```
+
+#### 8.2.5.消息回退
+
+![image-20231206105248803](https://image.elonlo.top/img/2023/12/06/656fe201cc83d.png)
+
+### 8.3.备份交换机
+
+备份交换机可以理解为 RabbitMQ 中交换机的`备胎`，当我们为**某一个交换机声明一个对应的备份交换机**时，就是为它创建一个`备胎`，当交换机接收到一条不可路由的消息时，将会把这条消息转发到备份交换机中，由备份交换机来进行转发和处理，通常备份交换机的类型为 **Fanout** ，这样就能把所有消息都投递到与之绑定的队列中，在备份交换机中绑定队列。还可以创建一个报警队列，用独立的消费者来进行监测和报警。 
+
+#### 8.3.1.流程图
+
+![image-20231210181101235](https://image.elonlo.top/img/2023/12/10/65758ebc9a8b9.png)
+
+#### 8.3.2.修改配置类
+
+```java
+@Configuration
+public class ConfirmConfig {
+
+    /**
+     * 队列
+     */
+    public static final String CONFIRM_QUEUE = "confirm.queue";
+
+    /**
+     * 交换机
+     */
+    public static final String CONFIRM_EXCHANGE = "confirm.exchange";
+
+    /**
+     * routingKey
+     */
+    public static final String CONFIRM_ROUTING_KEY = "confirm.routingkey";
+
+    /**
+     * 备份交换机
+     */
+    public static final String BACKUP_EXCHANGE = "backup.exchange";
+
+    /**
+     * 备份队列
+     */
+    public static final String BACKUP_QUEUE = "backup.queue";
+
+    /**
+     * 告警队列
+     */
+    public static final String WARNING_QUEUE = "warning.queue";
+
+    /**
+     * 声明队列
+     */
+    @Bean("confirmQueue")
+    public Queue confirmQueue() {
+        return QueueBuilder.durable(CONFIRM_QUEUE).build();
+    }
+
+    /**
+     * 声明备份队列
+     */
+    @Bean("backupQueue")
+    public Queue backupQueue() {
+        return QueueBuilder.durable(BACKUP_QUEUE).build();
+    }
+
+    /**
+     * 声明告警队列
+     */
+    @Bean("warningQueue")
+    public Queue warningQueue() {
+        return QueueBuilder.durable(WARNING_QUEUE).build();
+    }
+
+    /**
+     * 声明备份交换机
+     */
+    @Bean("backupExchange")
+    public FanoutExchange backupExchange() {
+        return new FanoutExchange(BACKUP_EXCHANGE);
+    }
+
+    /**
+     * 声明交换机
+     */
+    @Bean("confirmExchange")
+    public DirectExchange confirmExchange() {
+        return ExchangeBuilder.directExchange(CONFIRM_EXCHANGE).durable(true)
+                // 设置正常交换机绑定队列失败后使用备份交换机
+                .withArgument("alternate-exchange", BACKUP_EXCHANGE).build();
+    }
+
+    /**
+     * 队列绑定交换机
+     */
+    @Bean
+    public Binding confirmQueueBindingConfirmExchange(@Qualifier("confirmQueue") Queue confirmQueue,
+                                                      @Qualifier("confirmExchange") DirectExchange confirmExchange) {
+        return BindingBuilder.bind(confirmQueue).to(confirmExchange).with(CONFIRM_ROUTING_KEY);
+    }
+
+    /**
+     * 备份队列绑定备份交换机
+     */
+    @Bean
+    public Binding backupQueueBindingBackupExchange(@Qualifier("backupQueue") Queue backupQueue,
+                                                    @Qualifier("backupExchange") FanoutExchange backupExchange) {
+        return BindingBuilder.bind(backupQueue).to(backupExchange);
+    }
+
+    /**
+     * 告警队列绑定备份交换机
+     */
+    @Bean
+    public Binding warningQueueBindingBackupExchange(@Qualifier("warningQueue") Queue warningQueue,
+                                                     @Qualifier("backupExchange") FanoutExchange backupExchange) {
+        return BindingBuilder.bind(warningQueue).to(backupExchange);
+    }
+}
+```
+
+#### 8.3.3.报警消费者
+
+```java
+@Slf4j
+@Component
+public class WarningConsumer {
+
+    /** 
+     * 接收报警消息
+     */
+    @RabbitListener(queues = ConfirmConfig.WARNING_QUEUE)
+    public void receiveWarningMessage(Message message) {
+        log.error("报警发现不可路由消息: {}", new String(message.getBody(), StandardCharsets.UTF_8));
+    }
+}
+```
+
+#### 8.3.4.发送消息
+
+```java
+@Slf4j
+@RestController
+@RequestMapping("/confirm")
+public class ConfirmController {
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    @GetMapping("/sendMsg/{message}")
+    public String sendMsg(@PathVariable String message) {
+        // 设置回调id
+        CorrelationData correlationData1 = new CorrelationData();
+        correlationData1.setId("zs");
+        rabbitTemplate.convertAndSend(ConfirmConfig.CONFIRM_EXCHANGE, ConfirmConfig.CONFIRM_ROUTING_KEY, message, correlationData1);
+        log.info("生产者1发送消息为: {}", message);
+
+        CorrelationData correlationData2 = new CorrelationData();
+        correlationData2.setId("zs");
+        rabbitTemplate.convertAndSend(ConfirmConfig.CONFIRM_EXCHANGE, ConfirmConfig.CONFIRM_ROUTING_KEY + "abcd", message, correlationData2);
+        log.info("生产者2发送消息为: {}", message);
+        return "发送成功!";
+    }
+}
+```
+
+![image-20231211143246996](https://image.elonlo.top/img/2023/12/11/6576ad170d52f.png)
+
+#### 8.3.5.总结
+
+当设置了**消息回退**和**备份交换机**一起使用的时候，如果两者同时开启，**备份交换机的优先级高**。
+
+## 9.RabbitMQ 高级特性
+
+### 9.1.幂等性
+
+#### 9.1.1.概念
+
+用户对于**同一操作**发起的**一次请求或者多次请求**的**结果是一致**的，**不会因为多次点击而产生了不同的结果**。例如支付，用户购买商品后支付，支付扣款成功，但是返回结果的时候由于网络异常，此时钱已经扣了，用户再次点击支付按钮，此时会进行第二次扣款，返回结果成功，用户查询余额发现多扣钱了，流水记录也变成了两条。在以前的单应用系统中，我们只需要将数据操作放入事务中即可，发生错误立即回滚，但是在响应客户端的时候也可能出现网络中断或者异常等情况。
+
+#### 9.1.2.消息重复消费
+
+消费者在消费 `MQ` 中的消息时，`MQ` 已经把消息发送给消费者，消费者在给 `MQ` 返回 `ack` 时网络中断，故 `MQ` 未收到确认消息，该条消息会重新发给其他的消费者，或者在网络重连后再次发送给该消费者，但实际上该消费者已经成功消费了该条消息，造成消费者消费了重复的消息。
+
+#### 9.1.3.解决方案
+
+在海量订单生成的业务高峰期，生产端就有可能重复消费了消息，这时候消费端要实现幂等性，保证我们的消息永远不会被消费多次，即使收到了一样的消息。
+
+`MQ` 消费者的幂等性解决一般使用 **全局 ID 或者唯一标识**，比如**时间戳或者 UUID**，或者订单消费者消费 MQ 中的消息也可利用 `MQ` 中的id来判断。也可按照自己的规则生成一个全局唯一ID，每次消费消息时用该 id 来判断该消息是否已经消费过。
+
+业界主流的幂等性解决方案有两种：a：唯一 ID +指纹码机制，利用数据库主键去重；b：利用 Redis 的原子性实现
+
+- 唯一ID + 指纹码机制
+
+  指纹码：我们的一些业务规则或者时间戳加别的服务给的唯一信息码，不一定是系统生成的，一般都是由**业务规则拼接**而来，但是**一定要保证唯一性**，然后通过**查询判断这个 id 是否存在数据库中**，优势是实现简单，查询判断是否重复，劣势是在高并发时，如果是单个数据库就会有**写入性能瓶颈**，也可以采用分库分表提升性能，但不是最推荐的方式。
+
+- Redis原子性
+
+  利用 redis 执行 `setnx` 命令，天生具有幂等性。从而实现不重复消费。
+
+### 9.2.优先级队列
+
+#### 9.2.1.使用场景
+
+例如一个**订单催付**的场景，客户在天猫下订单后，淘宝会及时将订单推送给商家，如果用户在设定的时间内未付款就会给用户推送一条短信提醒，但是对于淘宝来说，商家也是要区分大客户和小客户的，比如像苹果、小米等大商家会创造很大的利润，所以理所当然他们的订单需要优先处理，订单量大了后采用 `RabbitMQ` 进行改造和优化，如果是大客户的订单给一个相对来说比较高的优先级，否则就是默认优先级。
+
+#### 9.2.2.优先级队列配置
+
+- 队列添加优先级
+
+  ```java
+  // 设置队列优先级 默认0-255,建议设置为10,表示优先级范围为0-10
+  Map<String, Object> arguments = new HashMap<>(4);
+  arguments.put("x-max-priority", 10);
+  channel.queueDeclare(QUEUE_NAME, false, false, false, arguments);
+  ```
+
+- 生产者设置发送消息优先级属性
+
+  ```java
+  String message = "test" + i;
+  // 设置发送消息优先级属性
+  AMQP.BasicProperties props = new AMQP.BasicProperties()
+          .builder().priority(5).build();
+  channel.basicPublish("", QUEUE_NAME, props, message.getBytes(StandardCharsets.UTF_8));
+  ```
+
+#### 9.2.3.代码示例
+
+- 生产者
+
+  ```java
+  /**
+   * 优先级队列-生产者
+   *
+   * @author elonlo
+   * @date 2023/12/11 21:27
+   */
+  public class PriorityProducer {
+  
+      /**
+       * 队列名称
+       */
+      public static final String QUEUE_NAME = "hello";
+  
+      public static void main(String[] args) throws IOException, TimeoutException {
+  
+          ConnectionFactory factory = new ConnectionFactory();
+          factory.setHost("124.220.32.153");
+          factory.setPort(25673);
+          factory.setUsername("admin");
+          factory.setPassword("admin");
+  
+          Connection connection = factory.newConnection();
+          Channel channel = connection.createChannel();
+  
+          // 声明队列
+          // 设置队列优先级 默认0-255,建议设置为10,表示优先级范围为0-10
+          Map<String, Object> arguments = new HashMap<>(4);
+          arguments.put("x-max-priority", 10);
+          channel.queueDeclare(QUEUE_NAME, false, false, false, arguments);
+  
+          // 发送消息
+          for (int i = 1; i < 11; i++) {
+              String message = "test" + i;
+              // 设置发送消息优先级属性
+              AMQP.BasicProperties props = new AMQP.BasicProperties()
+                      .builder().priority(5).build();
+              if (i == 5) {
+                  channel.basicPublish("", QUEUE_NAME, props, message.getBytes(StandardCharsets.UTF_8));
+              } else {
+                  channel.basicPublish("", QUEUE_NAME, null, message.getBytes(StandardCharsets.UTF_8));
+              }
+  
+          }
+          System.out.println("消息发送完毕!");
+      }
+  }
+  ```
+
+- 消费者
+
+  ```java
+  /**
+   * 优先级队列-消费者
+   *
+   * @author elonlo
+   * @date 2023/12/11 21:42
+   */
+  public class PriorityConsumer {
+  
+      public static final String QUEUE_NAME = "hello";
+  
+      public static void main(String[] args) throws IOException, TimeoutException {
+  
+          ConnectionFactory factory = new ConnectionFactory();
+          factory.setHost("124.220.32.153");
+          factory.setPort(25673);
+          factory.setUsername("admin");
+          factory.setPassword("admin");
+  
+          Connection connection = factory.newConnection();
+          Channel channel = connection.createChannel();
+  
+          // 接收消息
+          channel.basicConsume(QUEUE_NAME, true, (tag, message) -> {
+              System.out.println(new String(message.getBody(), StandardCharsets.UTF_8));
+          }, tag -> {});
+      }
+  }
+  ```
+
+<span style="color:red">注意：队列需要设置优先级，生产者发送消息设置消息的优先级，而且要先发送消息，然后消费者才去消费，这样才有机会对消息进行排序，实现优先级。</span>
+
+### 9.3.惰性队列
+
+#### 9.3.1.使用场景
+
+`RabbitMQ` 从 3.6.0 版本开始引入了惰性队列的概念。惰性队列会**尽可能的将消息存入磁盘中**，而在**消费者消费到相应的消息**时才会**被加载到内存中**，它的一个重要的设计目标是能够**支持更长的队列**，即**支持更多的消息存储**。当消费者由于各种原因（比如消费者下线、宕机亦或者是由于维护而关闭等）而导致长时间不能消费消息造成消息堆积时，惰性队列就很有必要了。
+
+默认情况下，当生产者将消息发送到 `RabbitMQ` 的时候，队列中的消息会**尽可能的存储在内存之中**，这样可以更快的将消息发送给消费者。即使是持久化的消息，在**被写入磁盘的同时也会在内存中驻留一份备份**。当 `RabbitMQ` 需要释放内存的时候，会**将内存中的消息写入磁盘中**，这个操作会耗费较长的时间，也会**阻塞队列**的操作，进而无法接收新的消息。虽然 `RabbitMQ` 的开发者们一直升级相关的算法，但是效果始终不太理想，尤其是消息量特别大的时候。
+
+#### 9.3.2.两种模式
+
+惰性队列具备两种模式：`default` 和 `lazy`。默认为 `default` 模式，在 3.6.0 之前的版本无需做任何变更。`lazy` 模式即为惰性队列的模式，可以通过调用 `channel.queueDeclare` 方法的时候在参数中设置，也可以通过 `Policy` 的方式设置，如果一个队列同时使用这两种方式设置的话，那么 `Policy` 的方式具有更高的优先级。如果要通过声明的方式改变已有队列的模式，那么只能先删除原有队列，然后再重新声明一个新的队列。
+
+在队列声明的时候可以通过 `x-queue-mode` 参数来设置队列的模式，取值为 `default` 和 `lazy`。下面是一个简单的示例：
+
+```java
+Map<String, Object> args = new HashMap<String, Object>();
+// 设置惰性队列
+args.put("x-queue-mode", "lazy");
+channel.queueDeclare("myqueue", false, false, false, args);
+```
+
+#### 9.3.3.内存开销对比
+
+![image-20231211221935287](https://image.elonlo.top/img/2023/12/11/65771a7fc6382.png)
+
+在发送 1000000 条消息，每条消息大概占 1KB 的情况下，普通队列占用内存是 1.2GB，而惰性队列仅仅占用 1.5MB
+
+## 10.RabbitMQ 集群
+
+RabbitMQ集群模式有两种：普通模式和镜像模式
+
+- 普通模式：**默认模式**，多个节点组成的普通集群，消息**随机发送到其中一个节点**的队列上，其他节点仅保留元数据，各个节点**仅有相同的元数据**，即队列结构、交换器结构、交换器与队列绑定关系、vhost。消费者消费消息时，会从各个节点拉取消息，如果**保存消息的节点故障**，**则无法消费消息**，如果做了消息持久化，那么得等该节点恢复，然后才可被消费；如果没有持久化的话，就会产生消息丢失的现象。
+- 镜像模式：它是**在普通模式的基础上**，把**需要的队列做成镜像队列**，**存在于多个节点来实现高可用(HA)**。该模式解决了上述问题，`Broker` 会**主动地将消息实体在各镜像节点间同步**，在 `consumer` 取数据时无需临时拉取。该模式带来的副作用也很明显，除了降低系统性能外，如果镜像队列数量过多，加之大量的消息进入，集群内部的网络带宽将会被大量消耗。通常地，**对可靠性要求较高的场景建议采用镜像模式**。
+
+### 10.1.普通集群
+
+#### 10.1.1.架构图
+
+![image-20231212144026382](https://image.elonlo.top/img/2023/12/12/6578006339de8.png)
+
+#### 10.1.2.环境准备
+
+- 创建日志目录及设置权限
+
+  ```shell
+  mkdir master/logs/ && chmod 777 master/logs/
+  mkdir slave1/logs/ && chmod 777 slave1/logs/
+  mkdir slave2/logs/ && chmod 777 slave2/logs/
+  ```
+
+- 配置文件
+
+  ```yaml
+  version: '3'
+  services:
+    master:
+      image: rabbitmq:3.9-management
+      container_name: master-rabbitmq
+      hostname: master-node
+      restart: unless-stopped
+      environment:
+        - RABBITMQ_DEFAULT_USER=admin
+        - RABBITMQ_DEFAULT_PASS=admin
+        - RABBITMQ_ERLANG_COOKIE=rabbitmqCookie
+      volumes:
+        - $PWD/master/data:/var/lib/rabbitmq #数据文件挂载
+        - $PWD/master/logs:/var/log/rabbitmq #日志文件挂载
+      ports:
+        - 25671:5672
+        - 35671:15672
+      networks:
+        - top
+  
+    slave1:
+      image: rabbitmq:3.9-management
+      container_name: slave-rabbitmq-1
+      hostname: slave-node-1
+      restart: unless-stopped
+      environment:
+        - RABBITMQ_DEFAULT_USER=admin
+        - RABBITMQ_DEFAULT_PASS=admin
+        - RABBITMQ_ERLANG_COOKIE=rabbitmqCookie
+      volumes:
+        - $PWD/slave1/data:/var/lib/rabbitmq #数据文件挂载
+        - $PWD/slave1/logs:/var/log/rabbitmq #日志文件挂载
+      ports:
+        - 25672:5672
+        - 35672:15672
+      links:
+        - master:master-node
+      networks:
+        - top
+  
+    slave2:
+      image: rabbitmq:3.9-management
+      container_name: slave-rabbitmq-2
+      hostname: slave-node-2
+      restart: unless-stopped
+      environment:
+        - RABBITMQ_DEFAULT_USER=admin
+        - RABBITMQ_DEFAULT_PASS=admin
+        - RABBITMQ_ERLANG_COOKIE=rabbitmqCookie
+      volumes:
+        - $PWD/slave2/data:/var/lib/rabbitmq #数据文件挂载
+        - $PWD/slave2/logs:/var/log/rabbitmq #日志文件挂载
+      ports:
+        - 25673:5672
+        - 35673:15672
+      links:
+        - master:master-node
+        - slave1:slave-node-1
+      networks:
+        - top
+  
+  networks:
+         top: {}
+  ```
+
+- 创建容器
+
+  ```shell
+  docker-compose up -d
+  ```
+
+- 管理界面
+
+  ![image-20231212153032468](https://image.elonlo.top/img/2023/12/12/65780c18e2fcc.png)
+
+  ![image-20231212153104479](https://image.elonlo.top/img/2023/12/12/65780c37d7e8c.png)
+
+  ![image-20231212153133691](https://image.elonlo.top/img/2023/12/12/65780c5609b20.png)
+
+#### 10.1.3.集群配置和搭建
+
+- slave-rabbitmq-1容器配置
+
+  ```shell
+  docker exec -it slave-rabbitmq-1 bash
+  ```
+
+  ```shell
+  # 终止RabbitMQ服务,但是Erlang节点还在运行
+  rabbitmqctl stop_app
+  
+  # 表示设置RabbitMQ节点为原始状态。会从该节点所属的cluster中都删除,从管理数据库中删除所有数据,例如配置的用户和vhost,还会删除所有的持久消息,前提是RabbitMQ应用需要处于停止状态,即执行过 stop_app
+  rabbitmqctl reset
+  
+  # 表示结合到指定的集群,如果有参数 --ram 表示作为RAM节点结合到该集群中
+  rabbitmqctl join_cluster --ram rabbit@master-node
+  
+  # 表示启动RabbitMQ服务
+  rabbitmqctl start_app
+  ```
+
+- slave-rabbitmq-2容器配置
+
+  ```shell
+  docker exec -it slave-rabbitmq-2 bash
+  ```
+
+  ```shell
+  rabbitmqctl stop_app
+  
+  rabbitmqctl reset
+  
+  rabbitmqctl join_cluster --ram rabbit@slave-node-1
+  
+  rabbitmqctl start_app
+  ```
+
+- 查看集群状态
+
+  ![image-20231212172742255](https://image.elonlo.top/img/2023/12/12/6578278f27f8f.png)
+
+  ![image-20231212172810742](https://image.elonlo.top/img/2023/12/12/657827aa32d78.png)
+
+### 10.2.镜像集群
+
+#### 10.2.1.为什么使用镜像集群
+
+如果 `RabbitMQ` 集群中只有一个 `Broker` 节点，那么**该节点的失效将导致整体服务的临时不可用**，而且也**可能导致消息的丢失**。因此可以将所有的消息都设置为持久化，并且对应队列的 `durable` 属性也设置为 `true`，但是这样仍然无法避免由于缓存导致的问题。因为**消息在发送和被写入磁盘并执行刷盘动作之间存在一个短暂却会产生问题的时间窗**。通过 `Publisher/Confirm` 机制能够确保客户端知道哪些消息已经存入磁盘，尽管如此，一般不希望遇到因单点故障导致的服务不可用情况。
+
+引入镜像队列（Mirror Queue）的机制，可以**将队列镜像到集群中的其他 `Broker` 节点**上，如果集群中的一个节点失效了，**队列能自动地切换到镜像中的另一个节点上**以保证服务的可用性。
+
+#### 10.2.2.镜像队列参数
+
+队列可**通过策略启用镜像**功能。策略可以随时更改；可以创建一个非镜像队列，然后在某个时间点将其镜像化（反之亦然）。非镜像队列与没有任何镜像的镜像队列是有区别的，前者缺少额外的镜像队列功能，可能会提供更高的吞吐量。
+
+为队列添加镜像会增加群集负载，但有助于降低丢失所有最新副本的概率。
+
+要使普通队列成为镜像队列，可创建一个与之匹配的策略，并设置策略键 `ha-mode` 和（可选参数）`ha-params`。具体参数请参数下表：
+
+| ha-mode（备份模式） | ha-params（备份参数） | ha-sync-mode（备份同步模式） | 含义                                                         |
+| ------------------- | --------------------- | ---------------------------- | ------------------------------------------------------------ |
+| exactly             | count                 | automatic                    | 集群中的队列副本（领导者加镜像）数量。数值为 1 表示只有一个副本：即队列领导者。<br/>如果运行队列领导者的节点不可用，其行为取决于队列的耐用性。<br/>计数值为 2 表示 2 个副本： 1 个队列领导和 1 个队列镜像。<br/>换句话说 `队列镜像数 = 节点数 - 1`。如果运行队列领导的节点不可用，<br/>队列镜像将根据配置的镜像晋升策略自动晋升为领导。如果群集中的节点数少于 count，<br/>队列将被镜像到所有节点。如果群集中的节点数多于计数，且包含镜像的节点宕机，<br/>则会在另一个节点上创建新的镜像。使用 `exactly `模式和 `ha-promote-on-shutdown`： `always`使用 `exactly`模式可能会很危险，因为队列可能会在集群中迁移，<br/>并在集群关闭时变得不同步。 |
+| all                 | (none)                | manual                       | 队列在集群中的所有节点上进行镜像。当集群中添加新节点时，队列将被镜像到该节点。<br/>这种设置非常保守。建议镜像到一个指定集群节点（N/2 + 1） |
+| nodes               | node names            |                              | 队列镜像到节点名中列出的节点。节点名称是出现在 `rabbitmqctl cluster_status` 中<br/>的 `Erlang` 节点名称；它们的形式通常是 `rabbit@hostname`。如果这些节点名中有<br/>任何一个不是集群的一部分，这并不构成错误。如果在声明队列时，列表中的节点<br/>都不在线，那么队列将在声明客户端所连接的节点上创建。 |
+
+#### 10.2.3.镜像队列配置示例
+
+| rabbitmqctl           | `rabbitmqctl set_policy ha-two "^two\." \  '{"ha-mode":"exactly","ha-params":2,"ha-sync-mode":"automatic"}' ` |
+| :-------------------- | ------------------------------------------------------------ |
+| rabbitmqctl (Windows) | `rabbitmqctl.bat set_policy ha-two "^two\." ^   "{""ha-mode"":""exactly"",""ha-params"":2,""ha-sync-mode"":""automatic""}" ` |
+| HTTP API              | `PUT /api/policies/%2f/ha-two {  "pattern":"^two\.",  "definition": {    "ha-mode":"exactly",    "ha-params":2,    "ha-sync-mode":"automatic"  } } ` |
+| Web UI                | Navigate to Admin > Policies > Add / update a policy.Enter "ha-two" next to Name and "^two\." next to Pattern.Enter "ha-mode" = "exactly" in the first line next to Policy, then "ha-params" = 2 in the second line, then "ha-sync-mode" = "automatic" in the third, and set the type on the second line to "Number".Click Add policy. |
+
+![image-20231212224239753](https://image.elonlo.top/img/2023/12/12/65787166d325e.png)
+
+### 10.3.高可用
