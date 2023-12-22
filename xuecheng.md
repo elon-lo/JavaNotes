@@ -2263,6 +2263,7 @@ public class AddCourseDTO implements Serializable {
 
     @ApiModelProperty(value = "微信")
     private String wechat;
+    
     @ApiModelProperty(value = "电话")
     private String phone;
 
@@ -3679,9 +3680,22 @@ public class SystemApplication {
 
 ## 8、网关服务
 
-### 8.1 搭建Nacos
+### 8.1 Nacos
 
-- docker-compose.yml
+官方文档地址：https://nacos.io/zh-cn/docs
+
+GitHub地址：https://github.com/alibaba/nacos
+
+#### 8.1.1 概念
+
+`Nacos` 有两个核心概念：`namespace` (命名空间)和 `group` (组)。
+
+- namespace：用于区分环境，比如开发、测试、生产环境
+- group：用于区分项目，比如 project1、project2
+
+#### 8.1.2 搭建 Nacos
+
+- 创建 docker-compose.yml
 
   ```yaml
   version: "3"
@@ -3727,6 +3741,41 @@ public class SystemApplication {
   
   networks:
          yu: {}
+  ```
+
+- 创建 nacos 的 `application.properties` 文件
+
+  ```properties
+  server.contextPath=/nacos
+  server.servlet.contextPath=/nacos
+  server.port=19948
+  
+  spring.datasource.platform=mysql
+  
+  db.num=1
+  db.url.0=jdbc:mysql://ip:port/nacos?characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true
+  db.user=xxx
+  db.password=xxx
+  
+  nacos.cmdb.dumpTaskInterval=3600
+  nacos.cmdb.eventTaskInterval=10
+  nacos.cmdb.labelTaskInterval=300
+  nacos.cmdb.loadDataAtStart=false
+  
+  management.metrics.export.elastic.enabled=false
+  management.metrics.export.influx.enabled=false
+  
+  server.tomcat.accesslog.enabled=true
+  server.tomcat.accesslog.pattern=%h %l %u %t "%r" %s %b %D %{User-Agent}i
+  
+  nacos.security.ignore.urls=/,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.ico,/console-fe/public/**,/v1/auth/login,/v1/console/health/**,/v1/cs/**,/v1/ns/**,/v1/cmdb/**,/actuator/**,/v1/console/server/**
+  nacos.naming.distro.taskDispatchThreadCount=1
+  nacos.naming.distro.taskDispatchPeriod=200
+  nacos.naming.distro.batchSyncKeyCount=1000
+  nacos.naming.distro.initDataRatio=0.9
+  nacos.naming.distro.syncRetryDelay=5000
+  nacos.naming.data.warmup=true
+  nacos.naming.expireInstance=true
   ```
 
 - my.cnf
@@ -3778,40 +3827,78 @@ public class SystemApplication {
   TZ=Asia/Shanghai
   ```
 
-- application.properties
+- 创建 Nacos 容器和 MySQL 容器
 
-  ```properties
-  server.contextPath=/nacos
-  server.servlet.contextPath=/nacos
-  server.port=19948
-  
-  spring.datasource.platform=mysql
-  
-  db.num=1
-  db.url.0=jdbc:mysql://ip:port/nacos?characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true
-  db.user=xxx
-  db.password=xxx
-  
-  nacos.cmdb.dumpTaskInterval=3600
-  nacos.cmdb.eventTaskInterval=10
-  nacos.cmdb.labelTaskInterval=300
-  nacos.cmdb.loadDataAtStart=false
-  
-  management.metrics.export.elastic.enabled=false
-  management.metrics.export.influx.enabled=false
-  
-  server.tomcat.accesslog.enabled=true
-  server.tomcat.accesslog.pattern=%h %l %u %t "%r" %s %b %D %{User-Agent}i
-  
-  nacos.security.ignore.urls=/,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.ico,/console-fe/public/**,/v1/auth/login,/v1/console/health/**,/v1/cs/**,/v1/ns/**,/v1/cmdb/**,/actuator/**,/v1/console/server/**
-  nacos.naming.distro.taskDispatchThreadCount=1
-  nacos.naming.distro.taskDispatchPeriod=200
-  nacos.naming.distro.batchSyncKeyCount=1000
-  nacos.naming.distro.initDataRatio=0.9
-  nacos.naming.distro.syncRetryDelay=5000
-  nacos.naming.data.warmup=true
-  nacos.naming.expireInstance=true
+  ```shell
+  docker-compose up -d
   ```
+  
+- 创建数据库
 
-- 创建nacos数据库，导入nacos版本对应的sql文件
+  ```sql
+  CREATE DATABASE `nacos` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */ /*!80016 DEFAULT ENCRYPTION='N' */
+  ```
+  
+- 下载与容器同版本的 Nacos 压缩包
 
+  下载地址：https://github.com/alibaba/nacos/releases
+  
+- 导入 nacos 数据库脚本执行文件
+
+#### 8.1.3 配置 Nacos
+
+1. 注册中心配置
+
+   1. 在父POM文件中添加服务发现依赖信息
+
+      ```xml
+      <dependency>
+          <groupId>com.alibaba.cloud</groupId>
+          <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+          <version>${spring-cloud-alibaba.version}</version>
+          <type>pom</type>
+          <scope>import</scope>
+      </dependency>
+      ```
+
+   2. 内容管理（xuecheng-plus-content-api）、系统管理模块（xuecheng-plus-system-service）添加以下依赖
+
+      ```xml
+      <!-- nacos服务发现依赖 -->
+      <dependency>
+          <groupId>com.alibaba.cloud</groupId>
+          <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+      </dependency>
+      ```
+
+   3. 内容管理模块（xuecheng-plus-content-api）配置
+
+      ```yaml
+      spring:
+        application:
+          name: content-api
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 注册中心配置
+            discovery:
+              namespace: dev
+              group: xuecheng-plus
+      ```
+
+   4. 系统管理模块（xuecheng-plus-system-service）配置
+
+      ```yaml
+      spring:
+        application:
+          name: system-service
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 注册中心配置
+            discovery:
+              namespace: dev
+              group: xuecheng-plus
+      ```
+
+2. 配置中心配置
