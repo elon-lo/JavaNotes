@@ -3871,7 +3871,7 @@ GitHub地址：https://github.com/alibaba/nacos
       </dependency>
       ```
 
-   3. 内容管理模块（xuecheng-plus-content-api）配置
+   3. 内容管理模块 bootstrap.yml 配置
 
       ```yaml
       spring:
@@ -3886,7 +3886,7 @@ GitHub地址：https://github.com/alibaba/nacos
               group: xuecheng-plus
       ```
 
-   4. 系统管理模块（xuecheng-plus-system-service）配置
+   4. 系统管理模块 bootstrap.yml 配置
 
       ```yaml
       spring:
@@ -3902,3 +3902,215 @@ GitHub地址：https://github.com/alibaba/nacos
       ```
 
 2. 配置中心配置
+
+   搭建 `Nacos` 配置中心，就是为了通过 `Nacos` 去管理项目的所有配置，`Nacos` 通过 `namespace`、`group`、`dataid` 三个参数来声明一个具体的配置信息。
+
+   第一步，通过 namespace、group 找到具体的环境和具体的项目。
+
+   第二步，通过 dataid 找到具体的配置文件，dataid 由三部分组成：
+
+   项目名：比如 project1，在Spring Boot 中可通过spring.application.name来配置
+
+   环境名：由 spring.profiles.active 指定
+
+   配置文件后缀名：如 properties、yml、yaml 等格式
+
+3. Nacos 普通配置
+
+   1. 添加配置中心依赖
+
+      ```xml
+      <!-- nacos服务配置依赖 -->
+      <dependency>
+          <groupId>com.alibaba.cloud</groupId>
+          <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+      </dependency>
+      ```
+
+   2. bootstrap.yml 添加 Nacos 配置
+
+      ```yaml
+      server:
+        servlet:
+          context-path: /content
+        port: 63040
+      
+      spring:
+        application:
+          name: content-api
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 注册中心配置
+            discovery:
+              namespace: dev
+              group: xuecheng-plus
+            # 配置中心配置
+            config:
+              namespace: dev
+              group: xuecheng-plus
+              file-extension: yaml
+              refresh-enabled: true
+      
+        datasource:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://ip:port/xuecheng-content?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: xxx
+          password: xxx
+        profiles:
+          active: dev
+      ```
+
+   3. 创建 Nacos 命令空间
+
+      ![image-20231222225514438](https://image.elonlo.top/img/2023/12/22/6585a3524eb3c.png)
+
+   4. Nacos 添加 content-api-dev 配置
+
+      ![image-20231222232233274](https://image.elonlo.top/img/2023/12/22/6585a9b95353c.png)
+
+   5. 移除本地服务 bootstrap.yml 配置
+
+      ```yaml
+      spring:
+        application:
+          name: content-api
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 注册中心配置
+            discovery:
+              namespace: dev
+              group: xuecheng-plus
+            # 配置中心配置
+            config:
+              namespace: dev
+              group: xuecheng-plus
+              file-extension: yaml
+              refresh-enabled: true
+      
+        profiles:
+          active: dev
+      ```
+
+4. 配置引用
+
+   1. xuecheng-plus-content-service 添加依赖
+
+      ```xml
+      <!-- nacos服务配置依赖 -->
+      <dependency>
+          <groupId>com.alibaba.cloud</groupId>
+          <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+      </dependency>
+      ```
+
+   2. 服务 bootstrap.yml 配置
+
+      ```yaml
+      spring:
+        application:
+          name: content-service
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 配置中心配置
+            config:
+              namespace: dev
+              group: xuecheng-plus
+              file-extension: yaml
+              refresh-enabled: true
+      
+        profiles:
+          active: dev
+      ```
+
+   3. Nacos 添加 content-service-dev 配置
+
+      ![image-20231222232414391](https://image.elonlo.top/img/2023/12/22/6585aa1e2da50.png)
+
+   4. xuecheng-plus-content-api 引用 xuecheng-plus-content-service 配置
+
+      ```yaml
+      spring:
+        application:
+          name: content-api
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 注册中心配置
+            discovery:
+              namespace: dev
+              group: xuecheng-plus
+            # 配置中心配置
+            config:
+              namespace: dev
+              group: xuecheng-plus
+              file-extension: yaml
+              refresh-enabled: true
+              # 引用content-service-dev配置
+              extension-configs:
+                - data-id: content-service-${spring.profiles.active}.yaml
+                  group: xuecheng-plus
+                  refresh: true
+                  
+        profiles:
+          active: dev            
+      ```
+
+5. Nacos 公共配置
+
+   1. 创建日志配置
+
+      ![image-20231222234451303](https://image.elonlo.top/img/2023/12/22/6585aef344881.png)
+
+   2. 服务 bootstrap.yml 配置
+
+      ```yaml
+      spring:
+        application:
+          name: content-api
+        cloud:
+          nacos:
+            server-addr: ip:port
+            # 注册中心配置
+            discovery:
+              namespace: dev
+              group: xuecheng-plus
+            # 配置中心配置
+            config:
+              namespace: dev
+              group: xuecheng-plus
+              file-extension: yaml
+              refresh-enabled: true
+              # 引用content-service-dev配置
+              extension-configs:
+                - data-id: content-service-${spring.profiles.active}.yaml
+                  group: xuecheng-plus
+                  refresh: true
+              # 读取公共配置
+              shared-configs:
+                - data-id: logging-${spring.profiles.active}.yaml
+                  group: xuecheng-plus-common
+                  refresh: true
+        profiles:
+          active: dev
+      ```
+
+6. Nacos 配置优先级
+
+   引入配置文件的方式有以下几种：
+
+   1. 以项目应用名方式引入
+   2. 以扩展文件方式引入
+   3. 以共享配置文件方式引入
+   4. 本地配置文件
+
+   各配置文件的优先级从高到低依次为：项目应用配置文件＞扩展配置文件＞共享配置文件＞本地配置文件
+
+   1. Nacos 配置本地配置文件优先
+
+      ![image-20231223000639918](https://image.elonlo.top/img/2023/12/23/6585b40fbdb37.png)
+
+7. 导入配置文件
+
