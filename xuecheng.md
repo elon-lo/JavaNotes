@@ -4114,3 +4114,121 @@ GitHub地址：https://github.com/alibaba/nacos
 
 7. 导入配置文件
 
+### 8.2 Gateway
+
+1. 创建工程
+
+2. 添加依赖信息
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-gateway</artifactId>
+   
+       <dependencies>
+           <!-- 网关 -->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-gateway</artifactId>
+           </dependency>
+   
+           <!-- nacos服务发现依赖 -->
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+           </dependency>
+   
+           <!-- nacos服务配置依赖 -->
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.alibaba</groupId>
+               <artifactId>fastjson</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+   
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+       </dependencies>
+   
+   </project>
+   ```
+
+3. 添加 bootstrap.yml 配置信息
+
+   ```yaml
+   spring:
+     application:
+       name: gateway
+     cloud:
+       nacos:
+         server-addr: 124.220.32.153:19948
+         # 注册中心配置
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         # 配置中心配置
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           # 读取公共配置
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+     profiles:
+       active: dev
+   ```
+
+4. `Nacos` 添加网关配置
+
+   ```yaml
+   server:
+     port: 63010 # 网关端口
+   spring:
+     cloud:
+       gateway:
+         routes: # 网关路由配置
+           - id: content-api # 路由id，自定义，只要唯一即可
+             # uri: http://127.0.0.1:8081 # 路由的目标地址 http就是固定地址
+             uri: lb://content-api # 路由的目标地址 lb就是负载均衡，后面跟服务名称
+             predicates: # 路由断言，也就是判断请求是否符合路由规则的条件
+               - Path=/content/** # 这个是按照路径匹配，只要以/content/开头就符合要求
+           - id: system-api
+             uri: lb://system-api
+             predicates:
+               - Path=/system/**
+   ```
+
+## 9、媒资工程
