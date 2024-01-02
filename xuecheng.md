@@ -4231,4 +4231,620 @@ GitHub地址：https://github.com/alibaba/nacos
                - Path=/system/**
    ```
 
-## 9、媒资工程
+## 9、媒资服务
+
+### 9.1 创建工程
+
+1. 创建媒资服务父工程，添加以下 `pom.xml`
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-media</artifactId>
+       <packaging>pom</packaging>
+       <modules>
+           <module>xuecheng-plus-media-api</module>
+           <module>xuecheng-plus-media-service</module>
+           <module>xuecheng-plus-media-model</module>
+       </modules>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+       </properties>
+   
+   </project>
+   ```
+
+2. 创建媒资服务 API 工程，添加以下 `pom.xml`
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus-media</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-media-api</artifactId>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.yu.xuecheng</groupId>
+               <artifactId>xuecheng-plus-media-service</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.yu.xuecheng</groupId>
+               <artifactId>xuecheng-plus-media-model</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+   
+           <!--cloud的基础环境包-->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-context</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 的 Spring Web MVC 集成 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-validation</artifactId>
+           </dependency>
+           
+           <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+   
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 集成 swagger -->
+           <dependency>
+               <groupId>com.spring4all</groupId>
+               <artifactId>swagger-spring-boot-starter</artifactId>
+           </dependency>
+       </dependencies>
+   
+   </project>
+   ```
+
+3. 创建媒资服务 Service 工程，添加以下 `pom.xml`
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus-media</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-media-service</artifactId>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+           <minio.version>8.4.3</minio.version>
+           <myOkhttp.version>4.8.1</myOkhttp.version>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.yu.xuecheng</groupId>
+               <artifactId>xuecheng-plus-media-model</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+   
+           <!-- MySQL 驱动 -->
+           <dependency>
+               <groupId>mysql</groupId>
+               <artifactId>mysql-connector-java</artifactId>
+               <scope>runtime</scope>
+           </dependency>
+   
+           <!-- mybatis plus的依赖 -->
+           <dependency>
+               <groupId>com.baomidou</groupId>
+               <artifactId>mybatis-plus-boot-starter</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 集成 Junit -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+   
+           <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+   
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>io.minio</groupId>
+               <artifactId>minio</artifactId>
+               <version>${minio.version}</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.squareup.okhttp3</groupId>
+               <artifactId>okhttp</artifactId>
+               <version>${myOkhttp.version}</version>
+           </dependency>
+   
+       </dependencies>
+   
+   </project>
+   ```
+
+4. 创建媒资服务 Model 工程，添加以下 `pom.xml`
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus-media</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-media-model</artifactId>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>com.yu.xuecheng</groupId>
+               <artifactId>xuecheng-plus-base</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+   
+           <!--存在mybatisplus注解添加相关注解保证不报错-->
+           <dependency>
+               <groupId>com.baomidou</groupId>
+               <artifactId>mybatis-plus-annotation</artifactId>
+               <version>${mybatis-plus-boot-starter.version}</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.baomidou</groupId>
+               <artifactId>mybatis-plus-core</artifactId>
+               <version>${mybatis-plus-boot-starter.version}</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+       </dependencies>
+   
+   </project>
+   ```
+
+### 9.2 创建数据库及相关表
+
+```sql
+CREATE DATABASE `xuecheng-media` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */ /*!80016 DEFAULT ENCRYPTION='N' */
+```
+
+```sql
+DROP TABLE IF EXISTS `media_files`;
+
+CREATE TABLE `media_files` (
+  `id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件id,md5值',
+  `company_id` bigint DEFAULT NULL COMMENT '机构ID',
+  `company_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '机构名称',
+  `filename` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件名称',
+  `file_type` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '文件类型（图片、文档，视频）',
+  `tags` varchar(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '标签',
+  `bucket` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '存储目录',
+  `file_path` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '存储路径',
+  `file_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件id',
+  `url` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '媒资文件访问地址',
+  `username` varchar(60) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '上传人',
+  `create_date` datetime DEFAULT NULL COMMENT '上传时间',
+  `change_date` datetime DEFAULT NULL COMMENT '修改时间',
+  `status` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT '1' COMMENT '状态,1:正常，0:不展示',
+  `remark` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '备注',
+  `audit_status` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '审核状态',
+  `audit_mind` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '审核意见',
+  `file_size` bigint DEFAULT NULL COMMENT '文件大小',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `unique_fileid` (`file_id`) USING BTREE COMMENT '文件id唯一索引 '
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC COMMENT='媒资信息';
+
+DROP TABLE IF EXISTS `media_process`;
+
+CREATE TABLE `media_process` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `file_id` varchar(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件标识',
+  `filename` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件名称',
+  `bucket` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '存储桶',
+  `file_path` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '存储路径',
+  `status` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态,1:未处理，2：处理成功  3处理失败',
+  `create_date` datetime NOT NULL COMMENT '上传时间',
+  `finish_date` datetime DEFAULT NULL COMMENT '完成时间',
+  `fail_count` int DEFAULT 0 COMMENT '失败次数',
+  `url` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '媒资文件访问地址',
+  `errormsg` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败原因',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `unique_fileid` (`file_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
+
+DROP TABLE IF EXISTS `media_process_history`;
+
+CREATE TABLE `media_process_history` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `file_id` varchar(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件标识',
+  `filename` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件名称',
+  `bucket` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '存储源',
+  `status` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态,1:未处理，2：处理成功  3处理失败',
+  `create_date` datetime NOT NULL COMMENT '上传时间',
+  `finish_date` datetime NOT NULL COMMENT '完成时间',
+  `url` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '媒资文件访问地址',
+  `fail_count` int DEFAULT 0 COMMENT '失败次数',
+  `file_path` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '文件路径',
+  `errormsg` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败原因',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
+
+DROP TABLE IF EXISTS `mq_message`;
+
+CREATE TABLE `mq_message` (
+  `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息id',
+  `message_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息类型代码',
+  `business_key1` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联业务信息',
+  `business_key2` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联业务信息',
+  `business_key3` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联业务信息',
+  `mq_host` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息队列主机',
+  `mq_port` int NOT NULL COMMENT '消息队列端口',
+  `mq_virtualhost` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息队列虚拟主机',
+  `mq_queue` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '队列名称',
+  `inform_num` int unsigned NOT NULL COMMENT '通知次数',
+  `state` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '处理状态，0:初始，1:成功',
+  `returnfailure_date` datetime DEFAULT NULL COMMENT '回复失败时间',
+  `returnsuccess_date` datetime DEFAULT NULL COMMENT '回复成功时间',
+  `returnfailure_msg` varchar(2048) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '回复失败内容',
+  `inform_date` datetime DEFAULT NULL COMMENT '最近通知时间',
+  `stage_state1` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '阶段1处理状态, 0:初始，1:成功',
+  `stage_state2` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '阶段2处理状态, 0:初始，1:成功',
+  `stage_state3` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '阶段3处理状态, 0:初始，1:成功',
+  `stage_state4` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '阶段4处理状态, 0:初始，1:成功',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
+
+DROP TABLE IF EXISTS `mq_message_history`;
+
+CREATE TABLE `mq_message_history` (
+  `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息id',
+  `message_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息类型代码',
+  `business_key1` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联业务信息',
+  `business_key2` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联业务信息',
+  `business_key3` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联业务信息',
+  `mq_host` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息队列主机',
+  `mq_port` int NOT NULL COMMENT '消息队列端口',
+  `mq_virtualhost` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '消息队列虚拟主机',
+  `mq_queue` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '队列名称',
+  `inform_num` int(10) unsigned zerofill DEFAULT NULL COMMENT '通知次数',
+  `state` int(10) unsigned zerofill DEFAULT NULL COMMENT '处理状态，0:初始，1:成功，2:失败',
+  `returnfailure_date` datetime DEFAULT NULL COMMENT '回复失败时间',
+  `returnsuccess_date` datetime DEFAULT NULL COMMENT '回复成功时间',
+  `returnfailure_msg` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '回复失败内容',
+  `inform_date` datetime DEFAULT NULL COMMENT '最近通知时间',
+  `stage_state1` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stage_state2` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stage_state3` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stage_state4` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
+```
+
+### 9.3 整合 MinIO
+
+#### 9.3.1 概述
+
+MinIO 是一个轻量级的服务，可以很简单的和其他应用结合使用，它兼容亚马逊 S3 云存储服务接口，非常适合存储大容量非结构化的数据，例如图片、视频、日志文件、备份数据和容器/虚拟机镜像等。
+
+它的最大特点就是轻量，使用简单，功能强大，支持各种平台，单个文件最大支持5TB，兼容 Amazon S3 接口，提供了Java、Python、GO等多版本SDK支持。
+
+官网地址：https://min.io/
+
+官方文档地址：https://www.minio.org.cn/，https://docs.minio.org.cn/docs
+
+MinIO 集群采用去中心化共享架构，每个节点是对等关系，通过 Nginx 可对 MinIO 进行负载均衡访问。
+
+在大数据领域，通常的设计理念都是无中心和分布式。MinIO 分布式模式可以帮助你搭建一个高可用的对象存储服务，你可以使用这些存储设备，而不用考虑其真实物理地址。
+
+它将分布在不同服务器上的多块硬盘组成一个对象存储服务。由于硬盘分布在不同的节点上，分布式 MinIO 避免了单点故障。
+
+#### 9.3.2 创建 MinIO 容器
+
+MinIO `docker-compose.yml` 配置文件示例如下：
+
+```yaml
+version: '3'
+
+services:
+  minio:
+    image: 'bitnami/minio:latest'
+    container_name: your_container_name
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    ports:
+      - 'port1:9000'
+      - 'port2:9001'
+    volumes:
+      - $PWD/data:/bitnami/minio/data
+    environment:
+      - MINIO_ROOT_USER=your_user
+      - MINIO_ROOT_PASSWORD=your_password
+      - PUID=1000
+      - PGID=1000
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge
+```
+
+```shell
+docker-compose up -d
+```
+
+### 9.4 准备环境
+
+1. 创建 `file` 桶和 `video` 桶
+
+   ![image-20240102145447411](https://image.elonlo.top/img/2024/01/02/6593b34102910.png)
+
+   ![image-20240102145522052](https://image.elonlo.top/img/2024/01/02/6593b35ae475c.png)
+
+   <span style="color:red">注意：需要将 `Access Policy` 设置为 `public`，否则将无法上传图片或视频</span>
+
+2. 媒资服务 Nacos 配置
+
+   - media-service-dev
+
+     ```yaml
+     spring:
+     # 数据库配置
+       datasource:
+         driver-class-name: com.mysql.cj.jdbc.Driver
+         url: jdbc:mysql://ip:port/xuecheng-media?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+         username: xxx
+         password: xxx
+       cloud:
+        config:
+         override-none: true
+     
+     minio:
+       endpoint: http://ip:port
+       accessKey: xxx
+       secretKey: xxx
+       bucket:
+         files: file
+         videofiles: video
+     ```
+
+   - media-api-dev
+
+     ```yaml
+     server:
+       servlet:
+         context-path: /media
+       port: 63050
+     ```
+
+3. 媒资服务项目配置
+
+   ```yaml
+   spring:
+     application:
+       name: media-service
+     cloud:
+       nacos:
+         server-addr: ip:port
+         # 配置中心配置
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           # 读取公共配置
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+     profiles:
+       active: dev
+   ```
+
+   ```yaml
+   spring:
+     application:
+       name: media-api
+     cloud:
+       nacos:
+         server-addr: ip:port
+         # 注册中心配置
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         # 配置中心配置
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           # 引用content-service-dev配置
+           extension-configs:
+             - data-id: media-service-${spring.profiles.active}.yaml
+               group: xuecheng-plus
+               refresh: true
+           # 读取公共配置
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+   
+     profiles:
+       active: dev
+   ```
+
+4. 创建属性类读取配置属性
+
+   ```java
+   /**
+    * minio属性类
+    *
+    * @author elonlo
+    * @date 2024/1/2 15:05
+    */
+   @Data
+   @Component
+   @ConfigurationProperties(prefix = MinioProperties.MINIO_PREFIX)
+   public class MinioProperties {
+   
+       /**
+        * minio属性前缀
+        */
+       public static final String MINIO_PREFIX = "minio";
+   
+       /**
+        * minio节点
+        */
+       private String endpoint;
+   
+       /**
+        * minio accessKey
+        */
+       private String accessKey;
+   
+       /**
+        * minio secretKey
+        */
+       private String secretKey;
+   
+       /**
+        * minio bucket
+        */
+       private Bucket bucket;
+   
+       @Data
+       public static class Bucket {
+           /**
+            * minio file bucket
+            */
+           private String files;
+   
+           /**
+            * minio video bucket
+            */
+           private String videofiles;
+       }
+   }
+   ```
+
+5. 创建配置类
+
+   ```java
+   /**
+    * Minio配置类
+    *
+    * @author elonlo
+    * @date 2024/1/2 15:16
+    */
+   @Configuration
+   public class MinioConfig {
+   
+       @Resource
+       private MinioProperties minioProperties;
+   
+       @Bean
+       public MinioClient minioClient() {
+           return MinioClient.builder()
+                   .endpoint(minioProperties.getEndpoint())
+                   .credentials(minioProperties.getAccessKey(), minioProperties.getSecretKey())
+                   .build();
+       }
+   }
+   ```
+
+   
+
+
+
