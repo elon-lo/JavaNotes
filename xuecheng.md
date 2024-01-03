@@ -4322,9 +4322,21 @@ GitHub地址：https://github.com/alibaba/nacos
    
            <dependency>
                <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-configuration-processor</artifactId>
+               <optional>true</optional>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
                <artifactId>spring-boot-starter-validation</artifactId>
            </dependency>
-           
+   
            <!-- 排除 Spring Boot 依赖的日志包冲突 -->
            <dependency>
                <groupId>org.springframework.boot</groupId>
@@ -4343,13 +4355,12 @@ GitHub地址：https://github.com/alibaba/nacos
                <artifactId>spring-boot-starter-log4j2</artifactId>
            </dependency>
    
-           <!-- Spring Boot 集成 swagger -->
+           <!-- 必须引入swagger依赖,否则启动该项目会启动失败 -->
            <dependency>
-               <groupId>com.spring4all</groupId>
-               <artifactId>swagger-spring-boot-starter</artifactId>
+               <groupId>com.github.xiaoymin</groupId>
+               <artifactId>knife4j-spring-boot-starter</artifactId>
            </dependency>
        </dependencies>
-   
    </project>
    ```
 
@@ -4437,7 +4448,6 @@ GitHub地址：https://github.com/alibaba/nacos
                <artifactId>okhttp</artifactId>
                <version>${myOkhttp.version}</version>
            </dependency>
-   
        </dependencies>
    
    </project>
@@ -4765,7 +4775,7 @@ docker-compose up -d
        active: dev
    ```
 
-4. 创建属性类读取配置属性
+4. 创建属性类读取配置属性（media-service）
 
    ```java
    /**
@@ -4819,7 +4829,7 @@ docker-compose up -d
    }
    ```
 
-5. 创建配置类
+5. 创建配置类（media-service）
 
    ```java
    /**
@@ -4844,7 +4854,465 @@ docker-compose up -d
    }
    ```
 
+### 9.5 上传图片
+
+1. 添加依赖和工具类（base）
+
+   ```xml
+   <properties>
+       <simplemagic.version>1.17</simplemagic.version>
+   </properties>
+   <!--根据扩展名取mimetype-->
+   <dependency>
+       <groupId>com.j256.simplemagic</groupId>
+       <artifactId>simplemagic</artifactId>
+       <version>${simplemagic.version}</version>
+   </dependency>
+   ```
+
+   ```java
+   /**
+    * 文件工具类
+    *
+    * @author elonlo
+    * @date 2024/1/3 11:14
+    */
+   public class FileUtil {
    
+       /**
+        * 获取文件类型
+        */
+       public static String getMimeType(String extensionName) {
+           if (StringUtils.isEmpty(extensionName)) {
+               extensionName = "";
+           }
+           //根据扩展名取出mimeType
+           ContentInfo extensionMatch = ContentInfoUtil.findExtensionMatch(extensionName);
+           //通用mimeType字节流
+           String mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+           if (StringUtils.hasText(mimeType)) {
+               mimeType = extensionMatch.getMimeType();
+           }
+           return mimeType;
+       }
+   }
+   ```
+
+2. 添加文件DTO、PO、VO
+
+   ```java
+   /**
+    * 上传文件普通参数
+    *
+    * @author elonlo
+    * @date 2024/1/3 10:23
+    */
+   @Data
+   public class UploadFileDTO implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 文件名
+        */
+       private String filename;
+   
+       /**
+        * 文件类型（文档,音频,视频）
+        */
+       private String fileType;
+   
+       /**
+        * 文件大小
+        */
+       private Long fileSize;
+   
+       /**
+        * 标签
+        */
+       private String tags;
+   
+       /**
+        * 上传人
+        */
+       private String username;
+   
+       /**
+        * 备注
+        */
+       private String remark;
+   }
+   ```
+
+   ```java
+   /**
+    * <p>
+    * 媒资信息
+    * </p>
+    *
+    * @author elonlo
+    * @since 2024-01-02
+    */
+   @Data
+   @EqualsAndHashCode(callSuper = false)
+   @Accessors(chain = true)
+   @TableName("media_files")
+   public class MediaFiles implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 文件id,md5值
+        */
+       @TableId(value = "id", type = IdType.INPUT)
+       private String id;
+   
+       /**
+        * 机构ID
+        */
+       private Long companyId;
+   
+       /**
+        * 机构名称
+        */
+       private String companyName;
+   
+       /**
+        * 文件名称
+        */
+       private String filename;
+   
+       /**
+        * 文件类型（图片、文档，视频）
+        */
+       private String fileType;
+   
+       /**
+        * 标签
+        */
+       private String tags;
+   
+       /**
+        * 存储目录
+        */
+       private String bucket;
+   
+       /**
+        * 存储路径
+        */
+       private String filePath;
+   
+       /**
+        * 文件id
+        */
+       private String fileId;
+   
+       /**
+        * 媒资文件访问地址
+        */
+       private String url;
+   
+       /**
+        * 上传人
+        */
+       private String username;
+   
+       /**
+        * 上传时间
+        */
+       private LocalDateTime createDate;
+   
+       /**
+        * 修改时间
+        */
+       private LocalDateTime changeDate;
+   
+       /**
+        * 状态,1:正常，0:不展示
+        */
+       private String status;
+   
+       /**
+        * 备注
+        */
+       private String remark;
+   
+       /**
+        * 审核状态
+        */
+       private String auditStatus;
+   
+       /**
+        * 审核意见
+        */
+       private String auditMind;
+   
+       /**
+        * 文件大小
+        */
+       private Long fileSize;
+   }
+   ```
+
+   ```java
+   /**
+    * 上传文件VO
+    *
+    * @author elonlo
+    * @date 2024/1/3 11:25
+    */
+   @Data
+   public class UploadFileVO extends MediaFiles implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   }
+   ```
+
+3. 上传文件控制器（media-api）
+
+   ```java
+   /**
+    * 媒资服务控制器
+    *
+    * @author elonlo
+    * @date 2024/1/3 11:23
+    */
+   @RestController
+   public class MediaController {
+   
+       private final IMediaFilesService mediaFilesService;
+   
+       public MediaController(IMediaFilesService mediaFilesService) {
+           this.mediaFilesService = mediaFilesService;
+       }
+   
+       @ApiOperation(value = "文件上传")
+       @PostMapping("/upload/course")
+       public ResultResponse<UploadFileVO> uploadFile(@RequestPart("file")MultipartFile file) {
+           UploadFileVO uploadFileVO = mediaFilesService.uploadFile(file);
+           return ResultResponse.success(uploadFileVO);
+       }
+   }
+   ```
+
+4. 上传文件服务相关接口
+
+   ```java
+   /**
+    * <p>
+    * 媒资信息 服务类
+    * </p>
+    *
+    * @author elonlo
+    * @since 2024-01-02
+    */
+   public interface IMediaFilesService extends IService<MediaFiles> {
+   
+       /**
+        * 上传文件
+        *
+        * @param file 文件
+        * @return {@link UploadFileVO}
+        */
+       UploadFileVO uploadFile(MultipartFile file);
+   
+       /**
+        * 保存文件信息
+        *
+        * @param companyId  机构id
+        * @param fileMd5    文件MD5
+        * @param dto        文件相关参数
+        * @param bucketName 桶名称
+        * @param objetName  对象名称
+        * @return {@link MediaFiles}
+        */
+       MediaFiles saveFile(Long companyId, String fileMd5, UploadFileDTO dto, String bucketName, String objetName);
+   }
+   ```
+
+   ```java
+   /**
+    * <p>
+    * 媒资信息 服务实现类
+    * </p>
+    *
+    * @author elonlo
+    * @since 2024-01-02
+    */
+   @Slf4j
+   @Service
+   public class MediaFilesServiceImpl extends ServiceImpl<MediaFilesMapper, MediaFiles> implements IMediaFilesService {
+   
+       private final MediaFilesMapper mediaFilesMapper;
+   
+       private final MinioClient minioClient;
+   
+       @Resource
+       private IMediaFilesService mediaFilesService;
+   
+       private final MinioProperties minioProperties;
+   
+       public MediaFilesServiceImpl(MediaFilesMapper mediaFilesMapper, MinioClient minioClient, MinioProperties minioProperties) {
+           this.mediaFilesMapper = mediaFilesMapper;
+           this.minioClient = minioClient;
+           this.minioProperties = minioProperties;
+       }
+   
+       /**
+        * 上传文件
+        */
+       @Override
+       public UploadFileVO uploadFile(MultipartFile file) {
+           Long companyId = 12322332L;
+   
+           // 1.通过file构建UploadFileDTO参数
+           UploadFileDTO dto = new UploadFileDTO();
+           // 文件名称
+           dto.setFilename(file.getOriginalFilename());
+           // 文件大小
+           dto.setFileSize(file.getSize());
+           // 文件类型
+           dto.setFileType("001001");
+   
+           // 2.通过file构建localFilePath
+           String localFilePath = this.getLocalFilePath(file);
+   
+           // 3.上传文件到minio
+           String fileName = dto.getFilename();
+           // 获取文件扩展名
+           String extensionName = fileName.substring(fileName.lastIndexOf("."));
+   
+           // 获取文件类型
+           String mimeType = FileUtil.getMimeType(extensionName);
+   
+           // 获取文件的md5
+           String fileMd5 = this.calculateFileMd5(new File(localFilePath));
+   
+           String defaultFolderPath = this.getDefaultFolderPath();
+           String objectName = defaultFolderPath + fileMd5 + extensionName;
+   
+           boolean uploadFlag = this.uploadMinio(minioProperties.getBucket().getFiles(), localFilePath, mimeType, objectName);
+           if (!uploadFlag) {
+               throw new BusinessException("文件上传失败");
+           }
+   
+           // 4.保存文件信息到数据库
+           MediaFiles mediaFiles = mediaFilesService.saveFile(companyId, fileMd5, dto, minioProperties.getBucket().getFiles(), objectName);
+           if (Objects.isNull(mediaFiles)) {
+               throw new BusinessException("保存文件信息到数据库失败");
+           }
+   
+           return CopyUtils.copy(mediaFiles, UploadFileVO.class);
+       }
+   
+       /**
+        * 上传文件到minio
+        */
+       private boolean uploadMinio(String bucketName, String localFilePath, String mimeType, String objetName) {
+   
+           try {
+               UploadObjectArgs uploadObjectArgs = UploadObjectArgs.builder()
+                       .bucket(bucketName)
+                       .filename(localFilePath)
+                       .contentType(mimeType)
+                       .object(objetName)
+                       .build();
+   
+               minioClient.uploadObject(uploadObjectArgs);
+               log.debug("上传文件成功,bucket:{},objetName:{}", bucketName, objetName);
+               return true;
+           } catch (IOException | ErrorResponseException | InsufficientDataException |
+                   InternalException | InvalidKeyException | InvalidResponseException |
+                   NoSuchAlgorithmException | ServerException | XmlParserException e) {
+               e.printStackTrace();
+               log.debug("上传文件失败,bucket:{},objetName:{},错误信息:[]", bucketName, objetName, e);
+           }
+           return false;
+       }
+   
+       /**
+        * 计算文件的md5值
+        */
+       private String calculateFileMd5(File file) {
+           try {
+               return DigestUtils.md5Hex(new FileInputStream(file));
+           } catch (IOException e) {
+               e.printStackTrace();
+           }
+           return "";
+       }
+   
+       /**
+        * 获取默认文件路径
+        */
+       private String getDefaultFolderPath() {
+           return LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd/"));
+       }
+   
+       /**
+        * 保存文件信息到数据库
+        */
+       @Transactional(rollbackFor = {RuntimeException.class, Exception.class}, propagation = Propagation.REQUIRED)
+       @Override
+       public MediaFiles saveFile(Long companyId, String fileMd5, UploadFileDTO dto, String bucketName, String objetName) {
+           // 查询文件是否存在
+           MediaFiles mediaFiles = mediaFilesMapper.selectById(fileMd5);
+           if (Objects.isNull(mediaFiles)) {
+               mediaFiles = CopyUtils.copy(dto, MediaFiles.class);
+               assert mediaFiles != null;
+               mediaFiles.setId(fileMd5);
+               mediaFiles.setCompanyId(companyId);
+               mediaFiles.setBucket(bucketName);
+               mediaFiles.setCreateDate(LocalDateTime.now());
+               mediaFiles.setFileId(fileMd5);
+               mediaFiles.setFilePath(objetName);
+               mediaFiles.setAuditStatus("002003");
+               mediaFiles.setUrl("/" + bucketName + "/" + objetName);
+   
+               int count = mediaFilesMapper.insert(mediaFiles);
+   
+               int i = 1 / 0;
+               if (count < 0) {
+                   log.debug("保存文件信息到数据库失败,bucket:{},objetName:{}", bucketName, objetName);
+                   return null;
+               }
+               return mediaFiles;
+           }
+           return mediaFiles;
+       }
+   
+       /**
+        * 获取本地临时文件的绝对路径
+        */
+       private String getLocalFilePath(MultipartFile file) {
+           try {
+               // 创建本地临时文件
+               File tempFile = File.createTempFile("minio", ".temp");
+               // 将文件信息拷贝到临时文件中
+               file.transferTo(tempFile);
+               // 返回临时文件的绝对路径
+               return tempFile.getAbsolutePath();
+           } catch (IOException e) {
+               e.printStackTrace();
+               log.error("创建本地临时文件失败: []", e);
+           }
+           return "";
+       }
+   }
+   ```
+
+5. 接口测试
+
+   ```http
+   ### 上传文件
+   POST {{media_host}}/media/upload/course
+   Content-Type: multipart/form-data; boundary=WebAppBoundary
+   
+   --WebAppBoundary
+   Content-Disposition: form-data; name="file"; filename="c.jpg"
+   
+   < c:/Users/elonlo/Pictures/c.jpg
+   ```
 
 
 
