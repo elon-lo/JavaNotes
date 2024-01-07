@@ -5228,7 +5228,7 @@ docker-compose up -d
                    InternalException | InvalidKeyException | InvalidResponseException |
                    NoSuchAlgorithmException | ServerException | XmlParserException e) {
                e.printStackTrace();
-               log.debug("上传文件失败,bucket:{},objetName:{},错误信息:[]", bucketName, objetName, e);
+               log.error("上传文件失败,bucket:{},objetName:{},错误信息:[]", bucketName, objetName, e);
            }
            return false;
        }
@@ -5274,7 +5274,6 @@ docker-compose up -d
    
                int count = mediaFilesMapper.insert(mediaFiles);
    
-               int i = 1 / 0;
                if (count < 0) {
                    log.debug("保存文件信息到数据库失败,bucket:{},objetName:{}", bucketName, objetName);
                    return null;
@@ -5303,7 +5302,7 @@ docker-compose up -d
        }
    }
    ```
-
+   
 5. 接口测试
 
    ```http
@@ -5770,4 +5769,329 @@ private String getChunkFolderPath(String fileMd5) {
     return fileMd5.charAt(0) + "/" + fileMd5.charAt(1) + "/" + fileMd5 + "/" + "chunk" + "/";
 }
 ```
+
+### 9.7 视频处理
+
+#### 9.7.1 什么是视频编码
+
+所谓视频[编码方式](https://baike.baidu.com/item/编码方式/6451499?fromModule=lemma_inlink)就是指通过[压缩技术](https://baike.baidu.com/item/压缩技术/1444262?fromModule=lemma_inlink)，将原始[视频格式](https://baike.baidu.com/item/视频格式/123472?fromModule=lemma_inlink)的文件转换成另一种视频格式文件的方式。[视频流](https://baike.baidu.com/item/视频流/9392168?fromModule=lemma_inlink)传输中最为重要的编解码标准有[国际电联](https://baike.baidu.com/item/国际电联/6302433?fromModule=lemma_inlink)的[H.261](https://baike.baidu.com/item/H.261/7591455?fromModule=lemma_inlink)、H.263、[H.264](https://baike.baidu.com/item/H.264/1022230?fromModule=lemma_inlink)，运动静止图像专家组的[M-JPEG](https://baike.baidu.com/item/M-JPEG/4602166?fromModule=lemma_inlink)和[国际标准化组织](https://baike.baidu.com/item/国际标准化组织/779832?fromModule=lemma_inlink)[运动图像](https://baike.baidu.com/item/运动图像/7181391?fromModule=lemma_inlink)专家组的[MPEG](https://baike.baidu.com/item/MPEG/213546?fromModule=lemma_inlink)系列标准。
+
+**文件格式**
+
+是指 `.mp4`、`.avi`、`.rmvb`等这些不同扩展名的视频文件的文件格式，视频文件的内容主要包括视频和音频，其文件格式是按照一定的编码格式去编码。
+
+**音视频编码格式**
+
+音视频编码格式很多，主要分为以下几类：
+
+- MPEG 系列
+
+  由 ISO 下属的 MPEG 开发，视频编码主要是 Mpeg1、 Mpeg2、 Mpeg4、 Mpeg4 AVC； 音频编码主要是 MPEG Audio Layer 1/2、MPEG Audio Layer 3、MPEG-2 AAC、MPEG-4 AAC等
+
+- H.26.X 系列
+
+  由 ITU 主导，侧重网络传输，包括H.261、H.262、H.263、H.263+、H.263++、H.264
+
+目前最常用的编码是**视频H.264**，**音频ACC**
+
+#### 9.7.2 FFmpeg 的基本使用
+
+FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
+
+下载地址：https://www.ffmpeg.org/download.html#build-windows
+
+#### 9.7.3 视频处理工具类
+
+### 9.8 xxl-job
+
+**任务调度**
+
+任务调度是指系统为了完成特定业务，基于给定时间点，给定时间间隔或者给定执行次数自动执行任务。
+
+**分布式任务调度**
+
+通常任务调用的程序是集成在应用中的，比如：优惠券服务中包括了定时发放优惠券的调度程序，计算服务中包括了定期生成报表的任务调度程序，由于采用分布式架构，一个服务往往会部署多个冗余实例来运行我们的业务，在这种分布式系统环境下运行任务调度，就称之为分布式任务调度。
+
+#### 9.8.1 简介
+
+XXL-JOB 是一个分布式任务调度平台，其核心设计目标是开发迅速、学习简单、轻量级、易扩展。现已开放源代码并接入多家公司线上产品线，开箱即用。
+
+官网：https://www.xuxueli.com/xxl-job/
+
+文档：https://www.xuxueli.com/xxl-job/#%E3%80%8A%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6%E5%B9%B3%E5%8F%B0XXL-JOB%E3%80%8B
+
+XXL-JOB 主要有调度中心、执行器、任务。
+
+- 调度中心
+
+  负责管理调度信息，按照调度配置发出调度请求，自身不承担业务代码；主要职责为执行器管理、任务管理、监控运维、日志管理等。
+
+- 任务执行器
+
+  负责接收调度请求并执行任务逻辑；主要职责是注册服务、任务执行服务（接收到任务后会放入线程池中的任务队列）、执行结果上报、日志服务等。
+
+- 任务
+
+  负责执行具体的业务处理。
+
+#### 9.8.2 搭建 xxl-job
+
+1. 下载 xxl-job 的 sql 脚本
+
+   地址：https://gitee.com/xuxueli0323/xxl-job/blob/2.3.1/doc/db/tables_xxl_job.sql
+
+2. 在数据库中创建 xxl-job 相关库表
+
+3. 创建 xxl-job 容器
+
+   ```yaml
+   version: "3"
+   services:
+     db:
+       image: mysql:8.0.32
+       container_name: mysql
+       restart: unless-stopped
+       ports:
+         - "29502:3306"
+       env_file:
+         - $PWD/mysql/mysql.env
+       volumes:
+         - $PWD/mysql/data:/var/lib/mysql
+         - $PWD/mysql/logs:/var/log/mysql
+         - $PWD/mysql/conf.d:/etc/mysql/conf.d
+         - $PWD/mysql/my.cnf:/etc/mysql/my.cnf
+       networks:
+         - app
+   
+     xxl:
+       image: xuxueli/xxl-job-admin:2.3.1
+       container_name: xxl-job
+       restart: unless-stopped
+       ports:
+         - "28880:8800"   
+       environment:
+         PARAMS: '
+         --server.port=8800
+         --server.servlet.context-path=/xxl-job-admin
+         --spring.datasource.url=jdbc:mysql://ip:port/xxl_job?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+         --spring.datasource.username=root
+         --spring.datasource.password=your_pass
+         --xxl.job.accessToken=your_token'
+       volumes:
+         - $PWD/xxl-job/logs:/data/applogs
+       depends_on:
+         - db
+       networks:
+         - app
+         
+     frp:
+       image: snowdreamtech/frps:0.51.0
+       container_name: frps
+       restart: unless-stopped
+       volumes:
+         - $PWD/frps/frps.ini:/etc/frp/frps.ini
+       environment:
+         TZ: Asia/Shanghai
+       network_mode: host
+       
+   networks:
+     app:
+       driver: bridge
+   ```
+
+   ```ini
+   [common]
+   # 监听端口
+   bind_port = 27030
+   # 面板端口
+   dashboard_port = 27050
+   # 登录面板账号设置
+   dashboard_user = xxx
+   dashboard_pwd = xxx
+   # 设置http及https协议下代理端口（非重要）
+   vhost_http_port = 27032
+   
+   allow_ports = 9999-27050
+   
+   # 身份验证
+   token = 9LgPn24Tag9NYh18ZXY
+   ```
+
+   ```shell
+   docker-compose up -d
+   ```
+
+4. 访问 ip:28880/xxl-job-admin
+
+   默认用户名和密码是：admin/123456
+
+5. 添加依赖信息（media-service）
+
+   ```xml
+   <!-- 整合xxl-job -->
+   <dependency>
+       <groupId>com.xuxueli</groupId>
+       <artifactId>xxl-job-core</artifactId>
+   </dependency>
+   ```
+
+6. Nacos 配置 xxl-job
+
+   ```yaml
+   xxl:
+     job:
+       admin: 
+         addresses: http://ip:28880/xxl-job-admin
+       executor:
+         # 执行器别名
+         appname: media-process-service
+         address: 
+         ip: 
+         # 执行器启动端口,默认为9999,启动多个执行器时端口不能重复
+         port: 8888
+         logpath: /data/applogs/xxl-job/jobhandler
+         logretentiondays: 30
+       accessToken: your_token
+   ```
+
+7. 创建 xxl-job 属性类和配置类
+
+   ```java
+   /**
+    * Xxl-Job属性类
+    *
+    * @author elonlo
+    * @date 2024/1/7 12:07
+    */
+   @Data
+   @Component
+   @ConfigurationProperties(prefix = XxlJobProperties.XXL_JOB_PREFIX)
+   public class XxlJobProperties {
+   
+       /**
+        * xxl-job属性前缀
+        */
+       public static final String XXL_JOB_PREFIX = "xxl.job";
+   
+       /**
+        * 调度中心配置
+        */
+       private Admin admin;
+   
+       /**
+        * 执行器配置
+        */
+       private Executor executor;
+   
+       @Data
+       public static class Admin {
+   
+           /**
+            * 调度中心部署根地址 [选填]：如调度中心集群部署存在多个地址则用逗号分隔。执行器将会使用该地址进行"执行器心跳注册"和"任务结果回调";为空则关闭自动注册
+            */
+           private String address;
+       }
+   
+       @Data
+       public static class Executor {
+   
+           /**
+            * 执行器AppName [选填]：执行器心跳注册分组依据；为空则关闭自动注册
+            */
+           private String appName;
+   
+           /**
+            * 执行器注册 [选填]：优先使用该配置作为注册地址，为空时使用内嵌服务 ”IP:PORT“ 作为注册地址。从而更灵活的支持容器类型执行器动态IP和动态映射端口问题
+            */
+           private String address;
+   
+           /**
+            * 执行器IP [选填]：默认为空表示自动获取IP，多网卡时可手动设置指定IP，该IP不会绑定Host仅作为通讯实用；地址信息用于 "执行器注册" 和 "调度中心请求并触发任务"
+            */
+           private String ip;
+   
+           /**
+            * 执行器端口号 [选填]：小于等于0则自动获取；默认端口为9999，单机部署多个执行器时，注意要配置不同执行器端口
+            */
+           private int port;
+   
+           /**
+            * 执行器运行日志文件存储磁盘路径 [选填] ：需要对该路径拥有读写权限；为空则使用默认路径
+            */
+           private String logPath;
+   
+           /**
+            * 执行器日志文件保存天数 [选填] ： 过期日志自动清理, 限制值大于等于3时生效; 否则, 如-1, 关闭自动清理功能
+            */
+           private int logRetentionDays;
+       }
+   
+       /**
+        * 执行器通讯TOKEN [选填]：非空时启用
+        */
+       private String accessToken;
+   }
+   ```
+
+   ```java
+   /**
+    * Xxl-Job配置类
+    *
+    * @author elonlo
+    * @date 2024/1/7 12:52
+    */
+   @Configuration
+   public class XxlJobConfig {
+   
+       public static final Logger logger = LoggerFactory.getLogger(XxlJobConfig.class);
+   
+       @Resource
+       private XxlJobProperties xxlJobProperties;
+   
+       @Bean
+       public XxlJobSpringExecutor xxlJobExecutor() {
+           logger.info(">>>>>>>>>>> xxl-job config init.");
+           XxlJobSpringExecutor xxlJobSpringExecutor = new XxlJobSpringExecutor();
+           xxlJobSpringExecutor.setAdminAddresses(xxlJobProperties.getAdmin().getAddress());
+           xxlJobSpringExecutor.setAppname(xxlJobProperties.getExecutor().getAppName());
+           xxlJobSpringExecutor.setAddress(xxlJobProperties.getExecutor().getAddress());
+           xxlJobSpringExecutor.setIp(xxlJobProperties.getExecutor().getIp());
+           xxlJobSpringExecutor.setPort(xxlJobProperties.getExecutor().getPort());
+           xxlJobSpringExecutor.setAccessToken(xxlJobProperties.getAccessToken());
+           xxlJobSpringExecutor.setLogPath(xxlJobProperties.getExecutor().getLogPath());
+           xxlJobSpringExecutor.setLogRetentionDays(xxlJobProperties.getExecutor().getLogRetentionDays());
+           return xxlJobSpringExecutor;
+       }
+   }
+   ```
+
+8. 配置 frpc
+
+   由于我的调度中心程序部署在腾讯云服务器上，而执行器是在本地，也就是说调度中心在公网，执行器所在程序在内网；为了让调度中心能够访问执行器，需要部署内网穿透服务，上面我们在部署调度中心容器时部署了 frps 服务端程序，我们还需要在本地配置 frpc 服务端，以实现内网穿透，下面是 frpc.ini 的一些示例配置。
+
+   ```ini
+   [common]
+   # server_addr为FRPS服务器IP地址(即公网IP)
+   server_addr = xxx
+   # server_port为服务端监听端口,与frps.ini中的bind_port保存一致
+   server_port = 27030
+   # 身份验证,与frps.ini中保存一致
+   token = 9LgPn24Tag9NYh18ZXY
+   
+   # frp客户端允许代理的端口范围
+   allow_ports = 9999-27050
+   
+   [http_proxy]
+   # 协议类型
+   type = http
+   # 内网服务器端口
+   local_port = 8888
+   custom_domains = xxx # 可以设置为公网IP
+   ```
+
+9. 配置执行器
+
+   使用内网穿透让调度中心调度执行器，需要将执行器地址配置为 公网IP + frps 代理端口（如公网IP:27032），同时 frpc.ini 文件中的内网端口要和执行器配置的端口一致。
+
+    
 
