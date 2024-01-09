@@ -5770,39 +5770,7 @@ private String getChunkFolderPath(String fileMd5) {
 }
 ```
 
-### 9.7 视频处理
-
-#### 9.7.1 什么是视频编码
-
-所谓视频[编码方式](https://baike.baidu.com/item/编码方式/6451499?fromModule=lemma_inlink)就是指通过[压缩技术](https://baike.baidu.com/item/压缩技术/1444262?fromModule=lemma_inlink)，将原始[视频格式](https://baike.baidu.com/item/视频格式/123472?fromModule=lemma_inlink)的文件转换成另一种视频格式文件的方式。[视频流](https://baike.baidu.com/item/视频流/9392168?fromModule=lemma_inlink)传输中最为重要的编解码标准有[国际电联](https://baike.baidu.com/item/国际电联/6302433?fromModule=lemma_inlink)的[H.261](https://baike.baidu.com/item/H.261/7591455?fromModule=lemma_inlink)、H.263、[H.264](https://baike.baidu.com/item/H.264/1022230?fromModule=lemma_inlink)，运动静止图像专家组的[M-JPEG](https://baike.baidu.com/item/M-JPEG/4602166?fromModule=lemma_inlink)和[国际标准化组织](https://baike.baidu.com/item/国际标准化组织/779832?fromModule=lemma_inlink)[运动图像](https://baike.baidu.com/item/运动图像/7181391?fromModule=lemma_inlink)专家组的[MPEG](https://baike.baidu.com/item/MPEG/213546?fromModule=lemma_inlink)系列标准。
-
-**文件格式**
-
-是指 `.mp4`、`.avi`、`.rmvb`等这些不同扩展名的视频文件的文件格式，视频文件的内容主要包括视频和音频，其文件格式是按照一定的编码格式去编码。
-
-**音视频编码格式**
-
-音视频编码格式很多，主要分为以下几类：
-
-- MPEG 系列
-
-  由 ISO 下属的 MPEG 开发，视频编码主要是 Mpeg1、 Mpeg2、 Mpeg4、 Mpeg4 AVC； 音频编码主要是 MPEG Audio Layer 1/2、MPEG Audio Layer 3、MPEG-2 AAC、MPEG-4 AAC等
-
-- H.26.X 系列
-
-  由 ITU 主导，侧重网络传输，包括H.261、H.262、H.263、H.263+、H.263++、H.264
-
-目前最常用的编码是**视频H.264**，**音频ACC**
-
-#### 9.7.2 FFmpeg 的基本使用
-
-FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
-
-下载地址：https://www.ffmpeg.org/download.html#build-windows
-
-#### 9.7.3 视频处理工具类
-
-### 9.8 xxl-job
+### 9.7 xxl-job
 
 **任务调度**
 
@@ -5812,7 +5780,7 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
 
 通常任务调用的程序是集成在应用中的，比如：优惠券服务中包括了定时发放优惠券的调度程序，计算服务中包括了定期生成报表的任务调度程序，由于采用分布式架构，一个服务往往会部署多个冗余实例来运行我们的业务，在这种分布式系统环境下运行任务调度，就称之为分布式任务调度。
 
-#### 9.8.1 简介
+#### 9.7.1 简介
 
 XXL-JOB 是一个分布式任务调度平台，其核心设计目标是开发迅速、学习简单、轻量级、易扩展。现已开放源代码并接入多家公司线上产品线，开箱即用。
 
@@ -5834,7 +5802,7 @@ XXL-JOB 主要有调度中心、执行器、任务。
 
   负责执行具体的业务处理。
 
-#### 9.8.2 搭建 xxl-job
+#### 9.7.2 搭建 xxl-job
 
 1. 下载 xxl-job 的 sql 脚本
 
@@ -6093,5 +6061,115 @@ XXL-JOB 主要有调度中心、执行器、任务。
 
    使用内网穿透让调度中心调度执行器，需要将执行器地址配置为 公网IP + frps 代理端口（如公网IP:27032），同时 frpc.ini 文件中的内网端口要和执行器配置的端口一致。
 
-    
+   在本地 frpc 目录下，进入到命令行，执行以下命令启动客户端 frp
+   
+   ```shell
+   frpc.exe -c frpc.ini
+   ```
+   
+
+#### 9.7.3 分片广播
+
+指每个执行器收到调度请求同时执行。
+
+分片广播使用场景如下：
+
+- 分片任务：10个执行器的集群来处理10w条数据，每台机器只需要处理1w条数据，耗时降低10倍
+- 广播任务场景：广播执行器同时运行 shell 脚本、广播集群节点进行缓存更新等。
+
+#### 9.7.4 作业分片
+
+每个执行器收到广播任务有两个参数：分片序号和分片总数。每个执行器从数据表取得任务时可以让任务id对分片总数取余，如果等于分片序号则让对应的执行器执行。
+
+上面两个执行器实例，所以分片总数是2，序号为0、1，从任务1开始，如下：
+
+1 % 2 = 1	执行器2执行
+
+2 % 2 = 0	执行器1执行
+
+3 % 2 = 1	执行器2执行
+
+#### 9.7.5 任务不重复执行
+
+xxl-job 中使用**调度过期策略**和**阻塞处理策略**来解决任务不重复执行的问题。
+
+**调度过期策略**
+
+调度策略就是错过调度时间的补偿处理策略。
+
+- 忽略：调度过期后，忽略过期的任务，并从当前时间开始重新计算下次触发时间；
+- 立即执行一次：调度过期后，立即执行一次，并从当前时间开始重新计算下次触发时间；
+
+这里我们选择`忽略`，如果选择`立即执行一次`可能重复执行相同的任务。
+
+**阻塞处理策略**
+
+阻塞策略就是指当前执行器正在执行任务还没有结束时调度中心进行任务调度，此时该如何处理？
+
+- 单机串行（默认）：调度请求进入单机执行器后，调度请求进入 FIFO 队列并以串行方式运行
+- 丢弃后调度：调度请求进入单机执行器后，发现执行器存在运行的调度任务，本次请求将会被丢弃并标记为失败；
+- 覆盖之前调度：调度请求进入单机执行器后，发现执行器存在运行的调度任务，将会终止运行中的调度任务并清空队列，然后运行本地调度任务。
+
+这里我们选择`丢弃后调度`，如果选择`覆盖之前调度`可能重复执行相同的任务。
+
+#### 9.7.6 任务幂等性
+
+幂等性是指一次和多次请求某一个资源对于资源本身应该具有相同的结果。
+
+幂等性是为了解决重复提交问题，比如：恶意刷单、重复支付等。
+
+解决幂等性常用的方案：
+
+- 数据库约束，比如主键和唯一索引
+- 乐观锁，常用于数据库，更新数据时根据乐观锁状态去更新
+- 唯一序列号，操作传递一个唯一序列号，操作时判断与该序列号相等才执行
+
+### 9.8 视频处理
+
+#### 9.8.1 什么是视频编码
+
+所谓视频[编码方式](https://baike.baidu.com/item/编码方式/6451499?fromModule=lemma_inlink)就是指通过[压缩技术](https://baike.baidu.com/item/压缩技术/1444262?fromModule=lemma_inlink)，将原始[视频格式](https://baike.baidu.com/item/视频格式/123472?fromModule=lemma_inlink)的文件转换成另一种视频格式文件的方式。[视频流](https://baike.baidu.com/item/视频流/9392168?fromModule=lemma_inlink)传输中最为重要的编解码标准有[国际电联](https://baike.baidu.com/item/国际电联/6302433?fromModule=lemma_inlink)的[H.261](https://baike.baidu.com/item/H.261/7591455?fromModule=lemma_inlink)、H.263、[H.264](https://baike.baidu.com/item/H.264/1022230?fromModule=lemma_inlink)，运动静止图像专家组的[M-JPEG](https://baike.baidu.com/item/M-JPEG/4602166?fromModule=lemma_inlink)和[国际标准化组织](https://baike.baidu.com/item/国际标准化组织/779832?fromModule=lemma_inlink)[运动图像](https://baike.baidu.com/item/运动图像/7181391?fromModule=lemma_inlink)专家组的[MPEG](https://baike.baidu.com/item/MPEG/213546?fromModule=lemma_inlink)系列标准。
+
+**文件格式**
+
+是指 `.mp4`、`.avi`、`.rmvb`等这些不同扩展名的视频文件的文件格式，视频文件的内容主要包括视频和音频，其文件格式是按照一定的编码格式去编码。
+
+**音视频编码格式**
+
+音视频编码格式很多，主要分为以下几类：
+
+- MPEG 系列
+
+  由 ISO 下属的 MPEG 开发，视频编码主要是 Mpeg1、 Mpeg2、 Mpeg4、 Mpeg4 AVC； 音频编码主要是 MPEG Audio Layer 1/2、MPEG Audio Layer 3、MPEG-2 AAC、MPEG-4 AAC等
+
+- H.26.X 系列
+
+  由 ITU 主导，侧重网络传输，包括H.261、H.262、H.263、H.263+、H.263++、H.264
+
+目前最常用的编码是**视频H.264**，**音频ACC**
+
+#### 9.8.2 FFmpeg 的基本使用
+
+FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
+
+下载地址：https://www.ffmpeg.org/download.html#build-windows
+
+#### 9.8.3 视频处理工具类
+
+#### 9.8.4 视频处理流程
+
+1. 任务调度中心广播作业分片
+2. 执行器收到广播作业分片，从数据库中取出待处理任务，读取未处理及处理失败的任务
+3. 执行器更新任务为处理中，根据任务内容从 MinIO 下载要处理的文件
+4. 执行器启动多线程去处理任务
+5. 任务处理完成，上传处理后的视频到 MinIO
+6. 更新任务处理结果，如果视频处理完成，除了更新任务处理结果外还要将文件的访问地址更新至任务处理表及文件表中，最后将任务完成记录写入历史表
+
+#### 9.8.5 待处理任务
+
+
+
+
+
+ 
 
