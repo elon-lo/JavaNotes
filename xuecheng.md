@@ -6167,6 +6167,208 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
 
 #### 9.8.5 待处理任务
 
+1. 添加待处理任务
+
+   ```java
+   @Slf4j
+   @Service
+   public class MediaFilesServiceImpl extends ServiceImpl<MediaFilesMapper, MediaFiles> implements IMediaFilesService {
+   
+       private final MediaFilesMapper mediaFilesMapper;
+   
+       private final MinioClient minioClient;
+   
+       @Resource
+       private IMediaFilesService mediaFilesService;
+   
+       private final MinioProperties minioProperties;
+   
+       private final MediaProcessMapper mediaProcessMapper;
+   
+       public MediaFilesServiceImpl(MediaFilesMapper mediaFilesMapper, MinioClient minioClient, MinioProperties minioProperties, MediaProcessMapper mediaProcessMapper) {
+           this.mediaFilesMapper = mediaFilesMapper;
+           this.minioClient = minioClient;
+           this.minioProperties = minioProperties;
+           this.mediaProcessMapper = mediaProcessMapper;
+       }
+   
+       /**
+        * 保存文件信息到数据库
+        */
+       @Transactional(rollbackFor = {RuntimeException.class, Exception.class}, propagation = Propagation.REQUIRED)
+       @Override
+       public MediaFiles saveFile(Long companyId, String fileMd5, UploadFileDTO dto, String bucketName, String objetName) {
+           // 查询文件是否存在
+           MediaFiles mediaFiles = mediaFilesMapper.selectById(fileMd5);
+           if (Objects.isNull(mediaFiles)) {
+               mediaFiles = CopyUtils.copy(dto, MediaFiles.class);
+               assert mediaFiles != null;
+               mediaFiles.setId(fileMd5);
+               mediaFiles.setCompanyId(companyId);
+               mediaFiles.setBucket(bucketName);
+               mediaFiles.setCreateDate(LocalDateTime.now());
+               mediaFiles.setFileId(fileMd5);
+               mediaFiles.setFilePath(objetName);
+               mediaFiles.setAuditStatus("002003");
+               mediaFiles.setUrl("/" + bucketName + "/" + objetName);
+   
+               int count = mediaFilesMapper.insert(mediaFiles);
+   
+               if (count < 0) {
+                   log.debug("保存文件信息到数据库失败,bucket:{},objetName:{}", bucketName, objetName);
+                   return null;
+               }
+               // 记录待处理任务
+               this.saveMediaProcess(mediaFiles);
+               return mediaFiles;
+           }
+           return mediaFiles;
+       }
+   
+       /**
+        * 添加待处理任务
+        */
+       private void saveMediaProcess(MediaFiles mediaFiles) {
+           // 1、获取文件后缀名
+           String filename = mediaFiles.getFilename();
+           String extension = filename.substring(filename.lastIndexOf("."));
+   
+           // 2、通过后缀名获取mimeType
+           String mimeType = FileUtil.getMimeType(extension);
+   
+           // 3、判断mimeType是否在允许上传的视频格式内,这里暂时不判断
+   
+           // 4、保存任务到数据库
+           MediaProcess mediaProcess = CopyUtils.copy(mediaFiles, MediaProcess.class);
+           assert mediaProcess != null;
+           // 待处理任务
+           mediaProcess.setStatus("1");
+           mediaProcess.setCreateDate(LocalDateTime.now());
+           mediaProcess.setFailCount(0);
+           mediaProcess.setUrl(null);
+           mediaProcessMapper.insert(mediaProcess);
+       }
+   }
+   ```
+
+2. 查询待处理任务
+
+   ```java
+   public interface IMediaProcessService extends IService<MediaProcess> {
+   
+       /**
+        * 查询待处理任务
+        *
+        * @param ShardIndex 分片索引
+        * @param ShardTotal 分片总数
+        * @param count      查询总数
+        * @return {@link List}<{@link MediaProcess}>
+        */
+       List<MediaProcess> getMediaProcessList(Integer ShardIndex, Integer ShardTotal, Integer count);
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class MediaProcessServiceImpl extends ServiceImpl<MediaProcessMapper, MediaProcess> implements IMediaProcessService {
+   
+       private final MediaProcessMapper mediaProcessMapper;
+   
+       public MediaProcessServiceImpl(MediaProcessMapper mediaProcessMapper) {
+           this.mediaProcessMapper = mediaProcessMapper;
+       }
+   
+       /**
+        * 查询待处理任务
+        */
+       @Override
+       public List<MediaProcess> getMediaProcess(Integer ShardIndex, Integer ShardTotal, Integer count) {
+           return mediaProcessMapper.selectMediaProcess(ShardIndex, ShardTotal, count);
+       }
+   }
+   ```
+
+   ```java
+   public interface MediaProcessMapper extends BaseMapper<MediaProcess> {
+   
+       /**
+        * 查询待处理任务
+        *
+        * @param shardIndex 分片索引
+        * @param shardTotal 分片总数
+        * @param count      查询总数
+        * @return {@link List}<{@link MediaProcess}>
+        */
+       @Select("SELECT * FROM media_process WHERE id % #{shardTotal} = #{shardIndex} AND (`status` = '1' OR `status` = '3') AND fail_count < 3 LIMIT #{count}")
+       List<MediaProcess> selectMediaProcess(@Param("shardIndex") Integer shardIndex,@Param("shardTotal") Integer shardTotal,@Param("count") Integer count);
+   }
+   ```
+
+#### 9.8.6 开启任务
+
+使用乐观锁来实现分布式锁功能
+
+1. `media_process` 表的 `status` 字段增加一个状态`4-处理中`
+
+2. 编写实现乐观锁的 `sql` 语句
+
+   ```sql
+   UPDATE media_process t SET t.`status` = '4' WHERE (t.`status` = '1' OR t.`status` = '3') AND t.fail_count < 3 AND t.id = ?
+   ```
+
+3. 添加开启任务实现逻辑
+
+   ```java
+   public interface IMediaProcessService extends IService<MediaProcess> {
+   
+       /**
+        * 开启任务
+        *
+        * @param id        主键id
+        * @return boolean  true-开启成功,false-开启失败
+        */
+       boolean startTask(Long id);
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class MediaProcessServiceImpl extends ServiceImpl<MediaProcessMapper, MediaProcess> implements IMediaProcessService {
+   
+       private final MediaProcessMapper mediaProcessMapper;
+   
+       public MediaProcessServiceImpl(MediaProcessMapper mediaProcessMapper) {
+           this.mediaProcessMapper = mediaProcessMapper;
+       }
+   
+       /**
+        * 开启任务
+        */
+       @Override
+       public boolean startTask(Long id) {
+           return mediaProcessMapper.startTask(id) > 0;
+       }
+   }
+   ```
+
+   ```java
+   public interface MediaProcessMapper extends BaseMapper<MediaProcess> {
+   
+       /**
+        * 开启任务
+        *
+        * @param id    主键id
+        * @return int  更新返回的记录数
+        */
+       @Update("UPDATE media_process t SET t.`status` = '4' WHERE (t.`status` = '1' OR t.`status` = '3') AND t.fail_count < 3 AND t.id = #{id}")
+       int startTask(@Param("id") Long id);
+   }
+   ```
+
+   
+
 
 
 
