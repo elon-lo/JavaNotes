@@ -6154,9 +6154,7 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
 
 下载地址：https://www.ffmpeg.org/download.html#build-windows
 
-#### 9.8.3 视频处理工具类
-
-#### 9.8.4 视频处理流程
+#### 9.8.3 视频处理流程
 
 1. 任务调度中心广播作业分片
 2. 执行器收到广播作业分片，从数据库中取出待处理任务，读取未处理及处理失败的任务
@@ -6165,7 +6163,7 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
 5. 任务处理完成，上传处理后的视频到 MinIO
 6. 更新任务处理结果，如果视频处理完成，除了更新任务处理结果外还要将文件的访问地址更新至任务处理表及文件表中，最后将任务完成记录写入历史表
 
-#### 9.8.5 待处理任务
+#### 9.8.4 待处理任务
 
 1. 添加待处理任务
 
@@ -6305,7 +6303,7 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
    }
    ```
 
-#### 9.8.6 开启任务
+#### 9.8.5 开启任务
 
 使用乐观锁来实现分布式锁功能
 
@@ -6367,7 +6365,496 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
    }
    ```
 
+#### 9.8.6 任务处理
+
+1. 添加视频处理相关工具类（xuecheng-plus-base模块）
+
+   ```java
+   /**
+    * 此文件作为视频文件处理父类，提供：
+    * 1、查看视频时长
+    * 2、校验两个视频的时长是否相等
+    */
+   public class VideoUtil {
    
+       /**
+        * ffmpeg安装路径
+        */
+       private final String ffmpegPath;
+   
+       public VideoUtil(String ffmpegPath) {
+           this.ffmpegPath = ffmpegPath;
+       }
+   
+       /**
+        * 检查视频时间是否一致
+        */
+       public Boolean checkVideoTime(String source, String target) {
+           // 获取源视频时间
+           String sourceTime = this.getVideoTime(source);
+           if (StringUtils.isEmpty(sourceTime)) {
+               return Boolean.FALSE;
+           }
+   
+           // 取出时分秒
+           sourceTime = sourceTime.substring(0, sourceTime.lastIndexOf("."));
+           // 获取目标视频时间
+           String targetTime = this.getVideoTime(target);
+           if (StringUtils.isEmpty(targetTime)) {
+               return Boolean.FALSE;
+           }
+           // 取出时分秒
+           targetTime = targetTime.substring(0, targetTime.lastIndexOf("."));
+           return Objects.equals(sourceTime, targetTime);
+       }
+   
+       /**
+        * 获取视频时间(时：分：秒：毫秒)
+        */
+       private String getVideoTime(String videoPath) {
+           /*
+           ffmpeg -i  lucene.mp4
+            */
+           List<String> commend = new ArrayList<>();
+           commend.add(ffmpegPath);
+           commend.add("-i");
+           commend.add(videoPath);
+           try {
+               ProcessBuilder builder = new ProcessBuilder();
+               builder.command(commend);
+               // 将标准输入流和错误输入流合并，通过标准输入流程读取信息
+               builder.redirectErrorStream(true);
+               Process p = builder.start();
+               String outString = waitFor(p);
+               int start = outString.trim().indexOf("Duration: ");
+               if (start < 0) {
+                   return null;
+               }
+               int end = outString.trim().indexOf(", start:");
+               if (end < 0) {
+                   return null;
+               }
+               String time = outString.substring(start + 10, end);
+               return time.trim();
+           } catch (Exception ex) {
+               ex.printStackTrace();
+           }
+           return null;
+       }
+   
+       /**
+        * 打印视频处理结果
+        */
+       public String waitFor(Process p) {
+           InputStream in = null;
+           InputStream error = null;
+           String result = "error";
+           int exitValue = -1;
+           StringBuffer outputString = new StringBuffer();
+           try {
+               in = p.getInputStream();
+               error = p.getErrorStream();
+               boolean finished = false;
+               // 每次休眠1秒，最长执行时间10分种
+               int maxRetry = 600;
+               int retry = 0;
+               while (!finished) {
+                   if (retry > maxRetry) {
+                       return "error";
+                   }
+                   try {
+                       while (in.available() > 0) {
+                           Character c = (char) in.read();
+                           outputString.append(c);
+                           System.out.print(c);
+                       }
+                       while (error.available() > 0) {
+                           Character c = (char) in.read();
+                           outputString.append(c);
+                           System.out.print(c);
+                       }
+                       // 进程未结束时调用exitValue将抛出异常
+                       exitValue = p.exitValue();
+                       finished = true;
+                   } catch (IllegalThreadStateException e) {
+                       //休眠1秒
+                       TimeUnit.SECONDS.sleep(1);
+                       retry++;
+                   }
+               }
+   
+           } catch (Exception e) {
+               e.printStackTrace();
+           } finally {
+               if (in != null) {
+                   try {
+                       in.close();
+                   } catch (IOException e) {
+                       System.out.println(e.getMessage());
+                   }
+               }
+           }
+           return outputString.toString();
+       }
+   }
+   ```
+
+   ```java
+   /**
+    * mp4视频工具类
+    */
+   public class Mp4VideoUtil extends VideoUtil {
+   
+       /**
+        * 本地ffmpeg程序路径
+        */
+       private final String ffmpegPath;
+   
+       /**
+        * 源视频路径
+        */
+       private final String videoPath;
+   
+       /**
+        * 转码后的mp4视频名称
+        */
+       private String mp4Name;
+   
+       /**
+        * 转码后的mp4视频路径
+        */
+       private final String mp4folderPath;
+   
+   
+       public Mp4VideoUtil(String ffmpegPath, String videoPath, String mp4Name, String mp4folderPath) {
+           super(ffmpegPath);
+           this.ffmpegPath = ffmpegPath;
+           this.videoPath = videoPath;
+           this.mp4Name = mp4Name;
+           this.mp4folderPath = mp4folderPath;
+       }
+   
+       /**
+        * 清除已生成的mp4
+        */
+       private void clearMp4(String mp4Path) {
+           File mp4File = new File(mp4Path);
+           if (mp4File.exists() && mp4File.isFile()) {
+               mp4File.delete();
+           }
+       }
+   
+       /**
+        * 视频编码,生成mp4文件,成功返回success,失败返回控制台日志
+        */
+       public String generateMp4() {
+           //清除已生成的mp4
+           clearMp4(mp4folderPath);
+           /*
+           ffmpeg.exe -i  lucene.avi -c:v libx264 -s 1280x720 -pix_fmt yuv420p -b:a 63k -b:v 753k -r 18 .\lucene.mp4
+            */
+           List<String> commend = new ArrayList<>();
+           commend.add(ffmpegPath);
+           commend.add("-i");
+           commend.add(videoPath);
+           commend.add("-c:v");
+           commend.add("libx264");
+           // 覆盖输出文件
+           commend.add("-y");
+           commend.add("-s");
+           commend.add("1280x720");
+           commend.add("-pix_fmt");
+           commend.add("yuv420p");
+           commend.add("-b:a");
+           commend.add("63k");
+           commend.add("-b:v");
+           commend.add("753k");
+           commend.add("-r");
+           commend.add("18");
+           commend.add(mp4folderPath);
+           String outString = null;
+           try {
+               ProcessBuilder builder = new ProcessBuilder();
+               builder.command(commend);
+               // 将标准输入流和错误输入流合并,通过标准输入流程读取信息
+               builder.redirectErrorStream(true);
+               Process p = builder.start();
+               outString = waitFor(p);
+           } catch (Exception ex) {
+               ex.printStackTrace();
+           }
+           Boolean checkVideoTime = this.checkVideoTime(videoPath, mp4folderPath);
+           if (!checkVideoTime) {
+               return outString;
+           } else {
+               return "success";
+           }
+       }
+   }
+   ```
+
+2. 添加ffmpeg属性类和 `Nacos` 配置
+
+   ```java
+   /**
+    * ffmpeg属性类
+    *
+    * @author elonlo
+    * @date 2024/1/18 21:20
+    */
+   @Data
+   @Component
+   @ConfigurationProperties(prefix = FfmpegProperties.FFM_PREFIX)
+   public class FfmpegProperties {
+   
+       public static final String FFM_PREFIX = "video";
+   
+       /**
+        * ffmpeg路径
+        */
+       private String ffmpegPath;
+   }
+   ```
+
+   ```yaml
+   # 配置本地ffmpeg程序路径
+   video:
+    ffmpeg_path: D:/Software/Basic/Ffmpeg/ffmpeg.exe
+   ```
+
+3. 更新媒资任务处理状态
+
+   ```java
+   public interface IMediaProcessService extends IService<MediaProcess> {
+   
+       /**
+        * 更新媒资任务处理状态
+        *
+        * @param taskId   任务id
+        * @param status   任务状态
+        * @param fileId   文件id
+        * @param url      文件地址
+        * @param errorMsg 错误消息
+        */
+       void updateMediaProcessStatus(Long taskId, String status, String fileId, String url, String errorMsg);
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class MediaProcessServiceImpl extends ServiceImpl<MediaProcessMapper, MediaProcess> implements IMediaProcessService {
+   
+       private final MediaProcessMapper mediaProcessMapper;
+   
+       private final MediaFilesMapper mediaFilesMapper;
+   
+       private final MediaProcessHistoryMapper mediaProcessHistoryMapper;
+   
+       public MediaProcessServiceImpl(MediaProcessMapper mediaProcessMapper, MediaFilesMapper mediaFilesMapper, MediaProcessHistoryMapper mediaProcessHistoryMapper) {
+           this.mediaProcessMapper = mediaProcessMapper;
+           this.mediaFilesMapper = mediaFilesMapper;
+           this.mediaProcessHistoryMapper = mediaProcessHistoryMapper;
+       }
+   
+       /**
+        * 更新媒资任务处理状态
+        */
+       @Transactional(rollbackFor = {RuntimeException.class, Exception.class}, propagation = Propagation.REQUIRED)
+       @Override
+       public void updateMediaProcessStatus(Long taskId, String status, String fileId, String url, String errorMsg) {
+           // 1.查询媒资处理任务
+           MediaProcess mediaProcess = mediaProcessMapper.selectById(taskId);
+   
+           if (Objects.isNull(mediaProcess)) {
+               return;
+           }
+   
+           // 2.任务执行失败
+           if (Objects.equals("3", status)) {
+               mediaProcess.setStatus("3");
+               // 失败次数加一
+               mediaProcess.setFailCount(mediaProcess.getFailCount() + 1);
+               mediaProcess.setErrormsg(errorMsg);
+               // 写入失败状态到媒资处理表
+               mediaProcessMapper.updateById(mediaProcess);
+           }
+   
+           // 3.任务执行成功
+           // 查询文件表记录,更新文件表url
+           MediaFiles mediaFiles = mediaFilesMapper.selectById(fileId);
+           mediaFiles.setUrl(url);
+           mediaFilesMapper.updateById(mediaFiles);
+   
+           // 4.更新媒资处理表状态
+           mediaProcess.setStatus(status);
+           mediaProcess.setUrl(url);
+           mediaProcess.setFinishDate(LocalDateTime.now());
+           mediaProcessMapper.updateById(mediaProcess);
+           // 5.媒资处理表同步到媒资处理历史表
+           MediaProcessHistory mediaProcessHistory = new MediaProcessHistory();
+           BeanUtils.copyProperties(mediaProcess, mediaProcessHistory);
+           mediaProcessHistoryMapper.insert(mediaProcessHistory);
+   
+           // 6.删除媒资处理表记录
+           mediaProcessMapper.deleteById(taskId);
+       }
+   
+   ```
+
+4. 视频处理任务调度
+
+   ```java
+   /**
+    * 视频处理任务调度
+    *
+    * @author elonlo
+    * @date 2024/1/17 22:16
+    */
+   @Slf4j
+   @Component
+   public class VideoJobHandler {
+   
+       private final IMediaProcessService mediaProcessService;
+   
+       private final IMediaFilesService mediaFilesService;
+   
+       private final FfmpegProperties ffmpegProperties;
+   
+       public VideoJobHandler(IMediaProcessService mediaProcessService, IMediaFilesService mediaFilesService, FfmpegProperties ffmpegProperties) {
+           this.mediaProcessService = mediaProcessService;
+           this.mediaFilesService = mediaFilesService;
+           this.ffmpegProperties = ffmpegProperties;
+       }
+   
+       /**
+        * 视频处理任务
+        */
+       @XxlJob("videoHandler")
+       public void videoHandler() {
+           // 分片参数
+           // 执行器序号,从0开始
+           int shardIndex = XxlJobHelper.getShardIndex();
+           // 执行器总数
+           int shardTotal = XxlJobHelper.getShardTotal();
+   
+           // 获取cpu线程数
+           int processors = Runtime.getRuntime().availableProcessors();
+   
+           // 1.查询待处理任务
+           List<MediaProcess> processList = mediaProcessService.getMediaProcessList(shardIndex, shardTotal, processors);
+   
+           // 待处理任务数
+           int size = processList.size();
+           if (size <= 0) {
+               log.debug("待处理任务数为0");
+               return;
+           }
+   
+           // 创建一个cpu线程数的线程池
+           ExecutorService executorService = Executors.newFixedThreadPool(size);
+   
+           // 创建计数器,所有线程执行完之后方法才结束
+           CountDownLatch countDownLatch = new CountDownLatch(size);
+   
+           processList.forEach(mediaProcess -> {
+               // 将任务加入线程池
+               executorService.execute(() -> {
+                   try {
+                       // 获取任务id
+                       Long taskId = mediaProcess.getId();
+   
+                       // 获取文件id
+                       String fileId = mediaProcess.getFileId();
+   
+                       // 任务处理url
+                       String processUrl = mediaProcess.getUrl();
+   
+                       // 2.开启任务
+                       boolean taskFlag = mediaProcessService.startTask(taskId);
+                       if (!taskFlag) {
+                           log.debug("抢占任务失败,任务id: {}", taskId);
+                           mediaProcessService.updateMediaProcessStatus(taskId, "3", fileId, processUrl, "抢占任务失败");
+                           return;
+                       }
+   
+                       // 3.视频转码
+                       // 获取源avi视频的路径
+                       String bucket = mediaProcess.getBucket();
+                       String objectName = mediaProcess.getFilePath();
+                       File file = mediaFilesService.downloadFileFromMinIO(bucket, objectName);
+                       if (Objects.isNull(file)) {
+                           log.debug("下载视频到本地失败,任务id: {}, bucket: {}, objectName: {}", taskId, bucket, objectName);
+                           mediaProcessService.updateMediaProcessStatus(taskId, "3", fileId, processUrl, "下载视频到本地失败");
+                           return;
+                       }
+   
+                       String videoPath = file.getAbsolutePath();
+   
+                       // 转换后mp4文件的名称
+                       String mp4Name = fileId + ".mp4";
+   
+                       // 转换后mp4文件的路径
+                       // 创建临时文件,作为转换后的文件
+                       File tempFile;
+                       try {
+                           tempFile = File.createTempFile("minio", ".mp4");
+                           tempFile.deleteOnExit();
+                       } catch (IOException e) {
+                           log.error("创建临时文件失败: []", e);
+                           mediaProcessService.updateMediaProcessStatus(taskId, "3", fileId, processUrl, "创建临时文件失败");
+                           return;
+                       }
+                       String mp4Path = tempFile.getAbsolutePath();
+   
+                       //创建工具类对象
+                       Mp4VideoUtil videoUtil = new Mp4VideoUtil(ffmpegProperties.getFfmpegPath(), videoPath, mp4Name, mp4Path);
+   
+                       // 开始视频转换,成功将返回success
+                       String result = videoUtil.generateMp4();
+   
+                       if (!Objects.equals("success", result)) {
+                           log.debug("视频转码失败,源avi视频的路径: {},转换后mp4文件的名称: {},转换后mp4文件的路径: {},错误信息: {}", videoPath, mp4Name, mp4Path, "视频转码失败");
+                           mediaProcessService.updateMediaProcessStatus(taskId, "3", fileId, processUrl, "视频转码失败");
+                           return;
+                       }
+   
+                       // 4.上传转码后的视频到minio
+                       String mimeType = FileUtil.getMimeType(".mp4");
+   
+                       // 获取mp4文件url
+                       String url = mediaFilesService.getMergeFilePathByFileMd5(fileId, ".mp4");
+   
+                       boolean uploadFlag = mediaFilesService.uploadMinio(bucket, mp4Path, mimeType, url);
+                       if (!uploadFlag) {
+                           log.debug("上传mp4到minio失败,任务id: {}", taskId);
+                           mediaProcessService.updateMediaProcessStatus(taskId, "3", fileId, processUrl, "上传mp4到minio失败");
+                           return;
+                       }
+   
+                       // 5.保存文件处理记录,任务状态为成功
+                       mediaProcessService.updateMediaProcessStatus(taskId, "2", fileId, url, "任务处理成功");
+                   } finally {
+                       // 计数器减一
+                       countDownLatch.countDown();
+                   }
+               });
+           });
+   
+           try {
+               // 阻塞,指定最大限度的等待时间,30分钟后自定释放
+               countDownLatch.await(30, TimeUnit.MINUTES);
+           } catch (InterruptedException e) {
+               log.error("线程释放失败: []", e);
+               e.printStackTrace();
+           }
+       }
+   }
+   ```
+
+   
+
+
 
 
 
