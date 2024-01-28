@@ -6852,7 +6852,1696 @@ FFmpeg 被许多开源项目采用，比如 QQ影音、暴风影音、VLC等。
    }
    ```
 
+
+### 9.9 课程计划绑定媒资
+
+1. 查询媒资文件列表
+
+   ```java
+   /**
+    * 媒资文件查询DTO
+    *
+    * @author elonlo
+    * @date 2024/1/20 14:15
+    */
+   @AllArgsConstructor
+   @NoArgsConstructor
+   @Accessors(chain = true)
+   @Builder
+   @Data
+   public class MediaFileQueryDTO implements Serializable {
    
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 审核状态
+        */
+       private String auditStatus;
+   
+       /**
+        * 媒资文件名称
+        */
+       private String filename;
+   
+       /**
+        * 媒资文件类型
+        */
+       private String type;
+   }
+   ```
+
+   ```java
+   @RestController
+   public class MediaController {
+   
+       private final IMediaFilesService mediaFilesService;
+   
+       public MediaController(IMediaFilesService mediaFilesService) {
+           this.mediaFilesService = mediaFilesService;
+       }
+   
+       @ApiOperation(value = "查询媒资文件列表")
+       @PostMapping("/files")
+       public PageResult<MediaFiles> listAllMediaFile(PageParams params, @RequestBody MediaFileQueryDTO dto) {
+           Page<MediaFiles> mediaFilesPage = mediaFilesService.listAllMediaFile(params, dto);
+           return new PageResult<>(mediaFilesPage.getRecords(), mediaFilesPage.getTotal(), mediaFilesPage.getCurrent(), mediaFilesPage.getPages());
+       }
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class MediaFilesServiceImpl extends ServiceImpl<MediaFilesMapper, MediaFiles> implements IMediaFilesService {
+   
+       private final MediaFilesMapper mediaFilesMapper;
+   
+       public MediaFilesServiceImpl(MediaFilesMapper mediaFilesMapper) {
+           this.mediaFilesMapper = mediaFilesMapper;
+       }
+   
+       /**
+        * 查询媒资文件列表
+        */
+       @Override
+       public Page<MediaFiles> listAllMediaFile(PageParams params, MediaFileQueryDTO dto) {
+           // 构建查询条件对象
+           LambdaQueryWrapper<MediaFiles> queryWrapper = new LambdaQueryWrapper<>();
+           queryWrapper.eq(StringUtils.hasText(dto.getType()), MediaFiles::getFileType, dto.getType());
+           queryWrapper.eq(StringUtils.hasText(dto.getAuditStatus()), MediaFiles::getAuditStatus, dto.getAuditStatus());
+           queryWrapper.eq(StringUtils.hasText(dto.getFilename()), MediaFiles::getFilename, dto.getFilename());
+   
+           // 分页对象
+           Page<MediaFiles> page = new Page<>(params.getPageNo(), params.getPageSize());
+           // 查询数据内容获得结果
+           return mediaFilesMapper.selectPage(page, queryWrapper);
+       }
+   }
+   ```
+
+2. 课程计划绑定媒资信息
+
+   ```java
+   /**
+    * 课程计划媒资绑定DTO
+    *
+    * @author elonlo
+    * @date 2024/1/20 13:12
+    */
+   @AllArgsConstructor
+   @NoArgsConstructor
+   @Accessors(chain = true)
+   @Builder
+   @Data
+   public class BindTeachplanMediaDTO implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 媒资文件id
+        */
+       private String mediaId;
+   
+       /**
+        * 媒资文件名称
+        */
+       private String fileName;
+   
+       /**
+        * 课程计划id
+        */
+       private Long teachplanId;
+   }
+   ```
+
+   ```java
+   @Api(value = "课程计划管理", tags = "课程计划管理")
+   @RestController
+   public class TeachplanController {
+   
+       private final ITeachplanService teachplanService;
+   
+       public TeachplanController(ITeachplanService teachplanService) {
+           this.teachplanService = teachplanService;
+       }
+   
+       @ApiOperation("课程计划绑定媒资信息")
+       @PostMapping("/teachplan/association/media")
+       public void associationMedia(@RequestBody BindTeachplanMediaDTO dto) {
+           teachplanService.associationMedia(dto);
+       }
+   }
+   ```
+
+   ```java
+   @Service
+   public class TeachplanServiceImpl extends ServiceImpl<TeachplanMapper, Teachplan> implements ITeachplanService {
+   
+       private final TeachplanMapper teachplanMapper;
+   
+       private final TeachplanMediaMapper teachplanMediaMapper;
+   
+       public TeachplanServiceImpl(TeachplanMapper teachplanMapper, TeachplanMediaMapper teachplanMediaMapper) {
+           this.teachplanMapper = teachplanMapper;
+           this.teachplanMediaMapper = teachplanMediaMapper;
+       }
+   
+       /**
+        * 课程计划创建或修改
+        */
+       @Override
+       public void saveOrUpdateTeachplan(AddTeachplanDTO dto) {
+           //通过课程计划id判断是新增和修改
+           Long teachplanId = dto.getId();
+           if (teachplanId == null) {
+               //新增
+               Teachplan teachplan = new Teachplan();
+               BeanUtils.copyProperties(dto, teachplan);
+               //确定排序字段，找到它的同级节点个数，排序字段就是个数加1  select count(1) from teachplan where course_id=117 and parentid=268
+               Long parentid = dto.getParentid();
+               Long courseId = dto.getCourseId();
+               int teachplanCount = getTeachplanCount(courseId, parentid);
+               teachplan.setOrderby(teachplanCount);
+               teachplanMapper.insert(teachplan);
+   
+           } else {
+               //修改
+               Teachplan teachplan = teachplanMapper.selectById(teachplanId);
+               //将参数复制到teachplan
+               BeanUtils.copyProperties(dto, teachplan);
+               teachplanMapper.updateById(teachplan);
+           }
+       }
+   
+       /**
+        * 课程计划绑定媒资信息
+        */
+       @Transactional(rollbackFor = {RuntimeException.class, Exception.class}, propagation = Propagation.REQUIRED)
+       @Override
+       public void associationMedia(BindTeachplanMediaDTO dto) {
+   
+           // 1.查询课程计划是否存在
+           Long teachplanId = dto.getTeachplanId();
+           Teachplan teachplan = teachplanMapper.selectById(teachplanId);
+           if (Objects.isNull(teachplan)) {
+               throw new BusinessException("课程计划不存在");
+           }
+   
+           // 2.只允许第二级课程计划绑定媒资信息
+           Integer grade = teachplan.getGrade();
+           if (grade != 2) {
+               throw new BusinessException("绑定失败,只允许第二级课程计划绑定媒资信息");
+           }
+   
+           // 3.删除课程计划原来绑定的媒资信息
+           teachplanMediaMapper.delete(new LambdaQueryWrapper<TeachplanMedia>()
+                   .eq(TeachplanMedia::getTeachplanId, teachplanId));
+   
+           // 4.添加新的媒资信息绑定课程计划
+           TeachplanMedia teachplanMedia = new TeachplanMedia();
+           BeanUtils.copyProperties(dto, teachplanMedia);
+           // 添加课程id
+           teachplanMedia.setCourseId(teachplan.getCourseId());
+           teachplanMedia.setMediaFilename(dto.getFileName());
+           teachplanMediaMapper.insert(teachplanMedia);
+       }
+   
+       /**
+        * 查询课程计划数量
+        */
+       private int getTeachplanCount(Long courseId, Long parentId) {
+           LambdaQueryWrapper<Teachplan> queryWrapper = new LambdaQueryWrapper<>();
+           queryWrapper = queryWrapper.eq(Teachplan::getCourseId, courseId).eq(Teachplan::getParentid, parentId);
+           Integer count = teachplanMapper.selectCount(queryWrapper);
+           return count + 1;
+       }
+   }
+   ```
+
+## 10、课程发布
+
+### 10.1 课程预览
+
+#### 10.1.1 配置模板引擎
+
+1. 添加依赖（xuecheng-plus-content-api模块）
+
+   ```xml
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-freemarker</artifactId>
+   </dependency>
+   ```
+
+2. 添加模板引擎 `Nacos` 配置
+
+   ![image-20240120153832226](https://image.elonlo.top/img/2024/01/20/65ab7881b42c9.png)
+
+3. 配置文件引入模板引擎配置
+
+   ```yaml
+   spring:
+     application:
+       name: content-api
+     cloud:
+       nacos:
+         server-addr: yourip:port
+         # 注册中心配置
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         # 配置中心配置
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           # 引用content-service-dev配置
+           extension-configs:
+             - data-id: content-service-${spring.profiles.active}.yaml
+               group: xuecheng-plus
+               refresh: true
+           # 读取公共配置
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+             - data-id: freemarker-config-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+   
+     profiles:
+       active: dev
+   ```
+
+4. 创建模板文件目录
+
+   ![image-20240120154330508](https://image.elonlo.top/img/2024/01/20/65ab79a3a09e9.png)
+
+#### 10.1.2 配置 Nginx
+
+1. 下载 Windows 版本的 Nginx
+
+2. 将静态文件拷贝到 `html` 目录下的 `xc` 文件夹中
+
+3. 将 `conf` 文件夹中的 `nginx.conf` 文件内容替换为以下内容
+
+   ```ini
+   #user  nobody;
+   worker_processes  1;
+   
+   #error_log  logs/error.log;
+   #error_log  logs/error.log  notice;
+   #error_log  logs/error.log  info;
+   
+   #pid        logs/nginx.pid;
+   
+   
+   events {
+       worker_connections  1024;
+   }
+   
+   
+   http {
+       include       mime.types;
+       default_type  application/octet-stream;
+   
+       #log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+       #                  '$status $body_bytes_sent "$http_referer" '
+       #                  '"$http_user_agent" "$http_x_forwarded_for"';
+   
+       #access_log  logs/access.log  main;
+   
+       sendfile        on;
+       #tcp_nopush     on;
+   
+       #keepalive_timeout  0;
+       keepalive_timeout  65;
+   
+       #gzip  on;
+   
+   	include D:/Software/Development/Nginx/conf.d/*.conf;
+   
+   	# minio服务
+   	upstream fileserver {
+   		server	ip:port	weight=10;
+   	}
+   }
+   ```
+
+4. 在 `conf` 目录同级建立一个 `conf.d` 文件夹，创建一个 `xc.conf` 文件，添加以下内容
+
+   ```ini
+   server {
+   	listen       8081;
+   	server_name  localhost;
+   
+   	ssi on;
+   	ssi_silent_errors on;
+   
+   	location / {
+   		alias   D:/Software/Development/Nginx/html/xc/;
+   		index  index.html index.htm;
+   	}
+   
+   	# 静态资源
+   	location /static/img/ {
+   		alias   D:/Software/Development/Nginx/html/xc/img/;
+   	}
+   
+   	location /static/css/ {
+   		alias   D:/Software/Development/Nginx/html/xc/css/;
+   	}
+   
+   	location /static/js/ {
+   		alias   D:/Software/Development/Nginx/html/xc/js/;
+   	}
+   
+   	location /static/plugins/ {
+   		alias   D:/Software/Development/Nginx/html/xc/plugins/;
+   		add_header	Access-Control-Allow-Origin '*';
+   		add_header	Access-Control-Allow-Credentials	true;
+   		add_header	Access-Control-Allow-Methods	GET;
+   	}
+   
+   	location /plugins/ {
+   		alias   D:/Software/Development/Nginx/html/xc/plugins/;
+   	}
+   
+   	location /course/preview/learning.html {
+   		alias   D:/Software/Development/Nginx/html/xc/course/learning.html;
+   	}
+   
+   	location /course/search.html {
+   		root   D:/Software/Development/Nginx/html/xc;
+   	}
+   
+   	location /course/learning.html {
+   		root   D:/Software/Development/Nginx/html/xc;
+   	}
+   }
+   
+   
+   server {
+   	listen       8082;
+   	server_name  localhost;
+   
+   	ssi on;
+   	ssi_silent_errors on;
+   
+   	location /video {
+   		proxy_pass	http://fileserver/;
+   	}
+   
+   	location /file {
+   		proxy_pass	http://fileserver/;
+   	}
+   }
+   ```
+
+5. 将 `course_template.html`，`learning.html` 中的 `域名1` 替换为 `127.0.0.1:8081`，`域名2` 替换为 `127.0.0.1:8082`
+
+6. 配置网关反向代理
+
+   ```ini
+   
+   #user  nobody;
+   worker_processes  1;
+   
+   #error_log  logs/error.log;
+   #error_log  logs/error.log  notice;
+   #error_log  logs/error.log  info;
+   
+   #pid        logs/nginx.pid;
+   
+   
+   events {
+       worker_connections  1024;
+   }
+   
+   
+   http {
+       include       mime.types;
+       default_type  application/octet-stream;
+   
+       #log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+       #                  '$status $body_bytes_sent "$http_referer" '
+       #                  '"$http_user_agent" "$http_x_forwarded_for"';
+   
+       #access_log  logs/access.log  main;
+   
+       sendfile        on;
+       #tcp_nopush     on;
+   
+       #keepalive_timeout  0;
+       keepalive_timeout  65;
+   
+       #gzip  on;
+   
+   	include D:/Software/Development/Nginx/conf.d/*.conf;
+   	
+   	# minio服务
+   	upstream fileserver {
+   		server	ip:port	weight=10;
+   	}
+   
+   	# 网关服务
+   	upstream gatewayserver {
+   		server	localhost:63010	weight=10;
+   	}
+   }
+   ```
+
+   ```ini
+   server {
+   	listen       8081;
+   	server_name  localhost;
+   
+   	ssi on;
+   	ssi_silent_errors on;
+   
+   	location / {
+   		alias   D:/Software/Development/Nginx/html/xc/;
+   		index  index.html index.htm;
+   	}
+   
+   	# 代理网关服务
+   	location /api/ {
+   		proxy_pass	http://gatewayserver/;
+   	}
+   }
+   ```
+
+#### 10.1.3 课程预览信息
+
+```java
+@Controller
+public class CoursePublishController {
+
+    private final ICoursePublishService coursePublishService;
+
+    public CoursePublishController(ICoursePublishService coursePublishService) {
+        this.coursePublishService = coursePublishService;
+    }
+
+    @ApiOperation(value = "课程预览信息")
+    @GetMapping("/course/preview/{courseId}")
+    public ModelAndView preview(@PathVariable("courseId") Long courseId) {
+        ModelAndView modelAndView = new ModelAndView();
+
+        // 查询课程的信息作为模型数据
+        CoursePreviewVO coursePreviewInfo = coursePublishService.getCoursePreviewInfo(courseId);
+
+        // 指定模型
+        modelAndView.addObject("model", coursePreviewInfo);
+
+        // 指定模板,根据视图名称加.ftl找到模板
+        modelAndView.setViewName("courseTemplate");
+        return modelAndView;
+    }
+}
+```
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- 上述3个meta标签*必须*放在最前面，任何其他内容都*必须*跟随其后！ -->
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="/static/img/asset-favicon.ico">
+    <title>学成在线-${model.courseBase.name}</title>
+
+    <link rel="stylesheet" href="/static/plugins/normalize-css/normalize.css" />
+    <link rel="stylesheet" href="/static/plugins/bootstrap/dist/css/bootstrap.css" />
+    <link rel="stylesheet" href="/static/css/page-learing-article.css" />
+</head>
+
+<body data-spy="scroll" data-target="#articleNavbar" data-offset="150">
+<div id="learningArea">
+<div class="article-banner">
+    <div class="banner-bg"></div>
+    <div class="banner-info">
+        <div class="banner-left">
+            <p>${model.courseBase.mtName!''}<span>\ ${model.courseBase.stName!''}</span></p>
+            <p class="tit">${model.courseBase.name}</p>
+            <p class="pic">
+                <#if model.courseBase.charge=='201000'>
+                    <span class="new-pic">免费</span>
+                <#else>
+                    <span class="new-pic">特惠价格￥${model.courseBase.price!''}</span>
+                    <span class="old-pic">原价￥${model.courseBase.originalPrice!''}</span>
+                </#if>
+            </p>
+            <p class="info">
+                <a href="#" @click.prevent="startLearning()">马上学习</a>
+                <span><em>难度等级</em>
+                <#if model.courseBase.grade=='204001'>
+                    初级
+                 <#elseif model.courseBase.grade=='204002'>
+                    中级
+                <#elseif model.courseBase.grade=='204003'>
+                    高级
+                </#if>
+                </span>
+                <span><em>课程时长</em>2小时27分</span>
+                <span><em>评分</em>4.7分</span>
+                <span><em>授课模式</em>
+                 <#if model.courseBase.teachmode=='200002'>
+                     录播
+                 <#elseif model.courseBase.teachmode=='200003'>
+                     直播
+                 </#if>
+                </span>
+            </p>
+        </div>
+        <div class="banner-rit">
+            <p>
+                <a href="http://localhost:8081/course/preview/learning.html?id=${model.courseBase.id}" target="_blank">
+                    <#if model.courseBase.pic??>
+                        <img src="http://localhost:8082${model.courseBase.pic!''}" alt="" width="270" height="156">
+                    <#else>
+                        <img src="/static/img/widget-video.png" alt="" width="270" height="156">
+                    </#if>
+
+                </a>
+            </p>
+            <p class="vid-act"><span> <i class="i-heart"></i>收藏 23 </span> <span>分享 <i class="i-weixin"></i><i class="i-qq"></i></span></p>
+        </div>
+    </div>
+</div>
+<div class="article-cont">
+    <div class="tit-list">
+        <a href="javascript:;" id="articleClass" class="active">课程介绍</a>
+        <a href="javascript:;" id="articleItem">目录</a>
+        <a href="javascript:;" id="artcleAsk">问答</a>
+        <a href="javascript:;" id="artcleNot">笔记</a>
+        <a href="javascript:;" id="artcleCod">评价</a>
+    </div>
+    <div class="article-box">
+        <div class="articleClass" style="display: block">
+            <!--<div class="rit-title">评价</div>-->
+            <div class="article-cont">
+                <div class="article-left-box">
+                    <div class="content">
+
+                        <div class="content-com suit">
+                            <div class="title"><span>适用人群</span></div>
+                            <div class="cont cktop">
+                                <div >
+                                    <p>${model.courseBase.users!""}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="content-com course">
+                            <div class="title"><span>课程制作</span></div>
+                            <div class="cont">
+                                <div class="img-box"><img src="/static/img/widget-myImg.jpg" alt=""></div>
+                                <div class="info-box">
+                                    <p class="name">教学方：<em>XX老师</em></p>
+                                    <p class="info">JavaEE开发与教学多年</p>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="content-com about">
+                            <div class="title"><span>课程介绍</span></div>
+                            <div class="cont cktop">
+                                <div >
+                                    <p>${model.courseBase.description!""}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="content-com prob">
+                            <div class="title"><span>常见问题</span></div>
+                            <div class="cont">
+                                <ul>
+                                    <li class="item"><span class="on-off"><i class="i-chevron-bot"></i> 我什么时候能够访问课程视频与作业？</span>
+                                        <div class="drop-down">
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div class="articleItem" style="display: none">
+            <div class="article-cont-catalog">
+                <div class="article-left-box">
+                    <div class="content">
+                        <#list model.teachplans as firstNode>
+                            <div class="item">
+                                <div class="title act"><i class="i-chevron-top"></i>${firstNode.pname}<span class="time">x小时</span></div>
+                                <div class="drop-down" style="height: 260px;">
+                                    <ul class="list-box">
+                                        <#list firstNode.teachPlanTreeNodes as secondNode>
+                                            <li><a href="http://localhost:8081/course/preview/learning.html?id=${model.courseBase.id}&chapter=${secondNode.teachplanMedia.teachplanId!''}" target="_blank">${secondNode.pname}</a></li>
+                                        </#list>
+                                    </ul>
+                                </div>
+                            </div>
+                        </#list>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <#--<div class="articleItem" style="display: none">
+            <div class="article-cont-catalog">
+                <div class="article-left-box">
+                    <div class="content">
+                        <div class="item">
+                            <div class="title act"><i class="i-chevron-top"></i>第一阶段 HTTP协议基础详解<span class="time">8小时</span></div>
+                            <div class="about">使用Java消息中间件处理异步消息成为了分布式系统中的必修课，通过本门课程可以深入浅出的学习如何在Java中使用消息中间件并且一步一步打造更优雅的最佳实践方案。</div>
+                            <div class="drop-down" style="height: 260px;">
+                                <ul class="list-box">
+                                    <li class="active">1.1 阅读：分级政策细节 <span>97’33”</span></li>
+                                    <li>1.2 视频：为什么分为 A 部分、B 部分、C 部分 <span>66’15”</span></li>
+                                    <li>1.3 视频：软件安装介绍 <span>86’42”</span></li>
+                                    <li>1.4 阅读：Emacs安装 <span>59’00”</span></li>
+                                    <li>1.5 作业1：Emacs安装 <span>93’29”</span></li>
+                                    <li>阶段测试</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <a href="#" class="overwrite">毕业考核</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>-->
+        <div class="artcleAsk" style="display: none">
+            <div class="article-cont-ask">
+                <div class="article-left-box">
+                    <div class="content">
+                        <div class="content-title">
+                            <p><a class="all">全部</a><a>精选</a><a>我的</a></p>
+                            <p><a class="all">全部</a><span><a>1.1</a><a>1.2</a><a>1.3</a><a>1.4</a><a>1.5</a></span><a href="$" class="more">更多 <i class="i-chevron-bot"></i></a></p>
+                        </div>
+                        <div class="item">
+                            <div class="item-left">
+                                <p><img src="/static/img/widget-myImg.jpg" width="60px" alt=""></p>
+                                <p>毛老师</p>
+                            </div>
+                            <div class="item-right">
+                                <p class="title">如何用微服务重构应用程序?</p>
+                                <p>2017-3-20 <span class="action-box"><span><i class="i-answer"></i>回答 2</span><span><i class="i-browse"></i>浏览 12</span></span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="itemlast">
+                            <a href="#" class="overwrite">显示更多问题</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="artcleNot" style="display: none;">
+            <div class="article-cont-note">
+                <div class="article-left-box">
+                    <div class="content">
+                        <div class="content-title">
+                            <p><a class="all">全部</a><a>精选</a><a>我的</a></p>
+                            <p><a class="all">全部</a><span><a>1.1</a><a>1.2</a><a>1.3</a><a>1.4</a><a>1.5</a></span><a href="$" class="more">更多 <i class="i-chevron-bot"></i></a></p>
+                        </div>
+                        <div class="item">
+                            <div class="item-left">
+                                <p><img src="/static/img/widget-myImg.jpg" width="60px" alt=""></p>
+                                <p>毛老师</p>
+                            </div>
+                            <div class="item-right">
+                                <span class="video-time"><i class="i-play"></i>2`10`</span>
+                                <p><img src="/static/img/widget-demo.png" width="221" alt=""></p>
+                                <p class="action-box">4小时前 <span class="active-box"><span><i class="i-coll"></i>采集</span><span><i class="i-laud"></i>赞</span></span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <div class="item-left">
+                                <p><img src="/static/img/widget-myImg.jpg" width="60px" alt=""></p>
+                                <p>毛老师</p>
+                            </div>
+                            <div class="item-right">
+                                <p class="action-box">4小时前 <span class="active-box"><span><i class="i-edt"></i>编辑</span><span><i class="i-del"></i>删除</span><span><i class="i-laud"></i>赞</span></span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="artcleCod" style="display: none;">
+            <div class="article-cont">
+                <div class="article-left-box">
+                    <div class="comment-box">
+                        <div class="evaluate">
+                            <div class="eva-top">
+                                <div class="tit">课程评分 </div>
+                                <div class="star">
+                                    <div class="score"><i>5</i></div>
+                                </div><span class="star-score"> <i>5</i> 分</span></div>
+                            <div class="eva-cont">
+                                <div class="tit">学员评语 </div>
+                                <div class="text-box">
+                                    <textarea class="form-control" rows="5" placeholder="扯淡、吐槽、表扬、鼓励......想说啥说啥！"></textarea>
+                                    <div class="text-right"><span>发表评论</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="course-evaluate">
+                            <div class="top-tit">评论
+                                <span>
+                        <label><input name="eval" type="radio" value="" checked /> 所有学生 </label>
+                        <label><input name="eval" type="radio" value="" /> 完成者 </label>
+                    </span>
+                            </div>
+                            <div class="top-cont">
+                                <div class="cont-top-left">
+                                    <div class="star-scor">
+                                        <div class="star-show">
+                                            <div class="score"><i>5</i></div>
+                                        </div>
+                                        <div class="scor">4.9分</div>
+                                    </div>
+                                    <div class="all-scor">总评分：12343</div>
+                                </div>
+                                <div class="cont-top-right">
+                                    <div class="star-grade">五星
+                                        <div class="grade">
+                                            <div class="grade-percent"><span></span></div>
+                                            <div class="percent-num"><i>95</i>%</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="comment-item-box">
+                                <div class="title">评论 <span>12453条评论</span></div>
+                                <div class="item">
+                                    <div class="item-left">
+                                        <p><img src="/static/img/widget-pic.png" width="60px" alt=""></p>
+                                        <p>毛老师</p>
+                                    </div>
+                                    <div class="item-cent">
+                                        <p>很受用，如果再深入下就更好了。</p>
+                                        <p class="time">2017-2-43</p>
+                                    </div>
+                                    <div class="item-rit">
+                                        <p>
+                                        <div class="star-show">
+                                            <div class="score"><i>4</i></div>
+                                        </div>
+                                        </p>
+                                        <p>评分 <span>5星</span></p>
+                                    </div>
+                                </div>
+                                <div class="get-more">页面加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    <div class="popup-course">
+        <div class="mask"></div>
+        <!--欢迎访问课程弹窗- start -->
+        <div class="popup-course-box">
+            <div class="title">${model.courseBase.name} <span class="close-popup-course-box">×</span></div>
+            <div class="content">
+                <p>欢迎学习本课程</p>
+                <p><a href="#" @click.prevent="addCourseTable()">加入我的课程表</a>  <a href="#" @click.prevent="startLearngin()">立即学习</a></p>
+            </div>
+        </div>
+    </div>
+    <div class="popup-box">
+        <div class="mask"></div>
+        <!--支付弹窗- start -->
+        <div class="popup-pay-box">
+            <div class="title">${model.courseBase.name} <span class="close-popup-pay-box">×</span></div>
+            <div class="content">
+                <img :src="qrcode" width="200" height="200" alt="请点击支付宝支付按钮，并完成扫码支付。"/>
+
+                <div class="info">
+                    <p class="info-tit">${model.courseBase.name}<span>课程有效期:${model.courseBase.validDays}天</span></p>
+                    <p class="info-pic">课程价格 : <span>￥${model.courseBase.originalPrice!''}元</span></p>
+                    <p class="info-new-pic">优惠价格 : <span>￥${model.courseBase.price!''}元</span></p>
+                </div>
+            </div>
+            <div class="fact-pic">实际支付: <span>￥${model.courseBase.price!''}元</span></div>
+            <div class="go-pay"><a href="#" @click.prevent="wxPay()">微信支付</a><a href="#" @click.prevent="aliPay()">支付宝支付</a><a href="#" @click.prevent="querypayresult()">支付完成</a><a href="#" @click.prevent="startLearngin()">试学</a></div>
+        </div>
+        <!--支付弹窗- end -->
+        <div class="popup-comment-box">
+
+        </div>
+    </div>
+</div>
+<script>var courseId = "${model.courseBase.id}";var courseCharge = "${model.courseBase.charge}"</script>
+</body>
+
+```
+
+#### 10.1.4 查看课程预览信息
+
+```java
+/**
+ * 课程开放公共控制器
+ *
+ * @author elonlo
+ * @date 2024/1/21 14:32
+ */
+@RestController
+@RequestMapping("/open")
+public class CourseOpenController {
+
+    private final ICoursePublishService coursePublishService;
+
+    public CourseOpenController(ICoursePublishService coursePublishService) {
+        this.coursePublishService = coursePublishService;
+    }
+
+    @ApiOperation("查询课程预览信息")
+    @GetMapping("/course/whole/{courseId}")
+    public CoursePreviewVO getPreviewInfo(@PathVariable("courseId") Long courseId) {
+        return coursePublishService.getCoursePreviewInfo(courseId);
+    }
+}
+```
+
+#### 10.1.5 查询媒资信息视频url
+
+```java
+/**
+ * 媒资开放公共控制器
+ *
+ * @author elonlo
+ * @date 2024/1/21 14:38
+ */
+@RestController
+@RequestMapping("/open")
+public class MediaOpenController {
+
+    private final IMediaFilesService mediaFilesService;
+
+    public MediaOpenController(IMediaFilesService mediaFilesService) {
+        this.mediaFilesService = mediaFilesService;
+    }
+
+    @ApiOperation(value = "查询媒资信息视频url")
+    @GetMapping("/preview/{mediaId}")
+    public ResultResponse<String> getPlayUrlById(@PathVariable("mediaId") String mediaId) {
+        MediaFiles mediaFiles = mediaFilesService.selectPlayUrlById(mediaId);
+
+        if (Objects.isNull(mediaFiles)) {
+            return ResultResponse.error("找不到视频");
+        }
+
+        String url = Optional.of(mediaFiles)
+                .map(MediaFiles::getUrl)
+                .orElse("");
+
+        if (StringUtils.isEmpty(url)) {
+            return ResultResponse.error("视频正在处理中");
+        }
+        return ResultResponse.success(url);
+    }
+}
+```
+
+#### 10.1.6 修改 `learning.js`
+
+```js
+var url = "/api";
+const requestGetCourseInfo = (courseId) => {
+    return  requestGet(url+"/content/open/course/whole/"+courseId,{});
+}
+const requestGetMeidaInfo = (mediaId,teachplanId,courseId) => {
+    if(url=="/api"){
+        return  requestGet(url+"/media/open/preview/"+mediaId,{});
+    }else{
+        return  requestGet(url+"/learning/open/learn/getvideo/"+courseId+"/"+teachplanId+"/"+mediaId,{});
+    }
+    
+}
+var location_url = String(window.location);
+if(location_url.indexOf("/preview/")<0){
+    url = "/api"
+}
+```
+
+### 10.2 课程审核
+
+```java
+@Controller
+public class CoursePublishController {
+
+    private final ICoursePublishService coursePublishService;
+
+    public CoursePublishController(ICoursePublishService coursePublishService) {
+        this.coursePublishService = coursePublishService;
+    }
+
+    @ApiOperation(value = "课程提交审核")
+    @ResponseBody
+    @PostMapping("/course/commit/audit/{courseId}")
+    public void commitAudit(@PathVariable("courseId") Long courseId) {
+        Long companyId = 1232141425L;
+        coursePublishService.commitAudit(companyId, courseId);
+    }
+}
+```
+
+```java
+@Service
+public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, CoursePublish> implements ICoursePublishService {
+
+    private final ICourseBaseService courseBaseService;
+
+    private final ITeachplanService teachplanService;
+
+    private final CourseMarketMapper courseMarketMapper;
+
+    private final CoursePublishPreMapper coursePublishPreMapper;
+
+    public CoursePublishServiceImpl(ICourseBaseService courseBaseService, ITeachplanService teachplanService, CourseMarketMapper courseMarketMapper, CoursePublishPreMapper coursePublishPreMapper) {
+        this.courseBaseService = courseBaseService;
+        this.teachplanService = teachplanService;
+        this.courseMarketMapper = courseMarketMapper;
+        this.coursePublishPreMapper = coursePublishPreMapper;
+    }
+
+    /**
+     * 课程提交审核
+     */
+    @Transactional(rollbackFor = {RuntimeException.class, Exception.class}, propagation = Propagation.REQUIRED)
+    @Override
+    public void commitAudit(Long companyId, Long courseId) {
+
+        CourseBaseInfoVO courseBaseInfoVO = courseBaseService.queryCourseBaseInfoVO(courseId);
+
+        // 1.课程已提交则不允许重复提交
+        String auditStatus = courseBaseInfoVO.getAuditStatus();
+        if (Objects.equals("202003", auditStatus)) {
+            throw new BusinessException("课程已提交,请等待审核");
+        }
+
+
+        // 2.校验课程基本信息是否上传课程图片
+        String pic = courseBaseInfoVO.getPic();
+        if (StringUtils.isEmpty(pic)) {
+            throw new BusinessException("该课程未上传图片,不能提交审核");
+        }
+
+        // 3.校验课程基本信息是否上传课程计划
+        List<TeachplanVO> teachplanTree = teachplanService.findTeachplanTree(courseId);
+        if (CollectionUtils.isEmpty(teachplanTree)) {
+            throw new BusinessException("该课程未添加课程计划,不能提交审核");
+        }
+
+        // 只能审核本机构的课程
+
+        // 4.将课程基本信息、营销信息、课程计划登信息存入课程预发布表
+        CoursePublishPre coursePublishPre = new CoursePublishPre();
+        BeanUtils.copyProperties(courseBaseInfoVO, coursePublishPre);
+
+        // 查询课程营销信息
+        CourseMarket courseMarket = courseMarketMapper.selectById(courseId);
+        String courseMarketJson = JSON.toJSONString(courseMarket);
+        coursePublishPre.setMarket(courseMarketJson);
+
+        // 查询课程计划信息
+        String teachplanTreeJson = JSON.toJSONString(teachplanTree);
+        coursePublishPre.setTeachplan(teachplanTreeJson);
+        // 修改状态和创建时间、审核时间
+        coursePublishPre.setId(courseId);
+        coursePublishPre.setStatus("202003");
+        coursePublishPre.setCreateDate(LocalDateTime.now());
+        coursePublishPre.setAuditDate(LocalDateTime.now());
+
+        // 添加机构
+        coursePublishPre.setCompanyId(companyId);
+
+        // 5.查询预发布记录,如果有记录则更新,否则添加记录
+        CoursePublishPre publishPre = coursePublishPreMapper.selectById(courseId);
+        if (Objects.isNull(publishPre)) {
+            coursePublishPreMapper.insert(coursePublishPre);
+        } else {
+            coursePublishPreMapper.updateById(coursePublishPre);
+        }
+
+        // 6.更新课程基本信息审核状态
+        CourseBase courseBase = courseBaseService.getById(courseId);
+        courseBase.setAuditStatus("202003");
+        courseBaseService.updateById(courseBase);
+    }
+}
+```
+
+### 10.3 消息SDK
+
+为了保证分布式事务下的数据**最终一致性**效果，我们采用了**本地消息表**和**分布式定时任务调度**来解决该问题，将消息处理做成一个公共的组件，其他服务依赖使用。
+
+1. 创建消息模块工程
+
+2. 添加以下依赖信息
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-message</artifactId>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+           <myOkhttp.version>4.8.1</myOkhttp.version>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-context</artifactId>
+           </dependency>
+   
+           <!-- MySQL 驱动 -->
+           <dependency>
+               <groupId>mysql</groupId>
+               <artifactId>mysql-connector-java</artifactId>
+               <scope>runtime</scope>
+           </dependency>
+   
+           <!-- mybatis plus的依赖 -->
+           <dependency>
+               <groupId>com.baomidou</groupId>
+               <artifactId>mybatis-plus-boot-starter</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 集成 Junit -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+   
+           <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+   
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.squareup.okhttp3</groupId>
+               <artifactId>okhttp</artifactId>
+               <version>${myOkhttp.version}</version>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+3. 使用插件生成`mq_message`，`mq_message_history`的 PO等信息
+
+4. 添加 `MyBatisPlusConfig` 配置类
+
+   ```java
+   @Configuration
+   @MapperScan("com.yu.xuecheng.**.mapper")
+   public class MyBatisPlusConfig {
+   
+   }
+   ```
+
+5. 添加消息相关接口和实现类
+
+   ```java
+   /**
+    * <p>
+    * 消息队列消息表 服务类
+    * </p>
+    *
+    * @author elonlo
+    * @since 2024-01-21
+    */
+   public interface IMqMessageService extends IService<MqMessage> {
+   
+       /**
+        * 扫描消息表记录,查询未处理的消息
+        *
+        * @param shardIndex 分片序号
+        * @param shardTotal 分片总数
+        * @param count      扫描记录数
+        * @return {@link List}<{@link MqMessage}>
+        */
+       List<MqMessage> getMessageList(int shardIndex, int shardTotal, String messageType, int count);
+   
+       /**
+        * 添加消息
+        *
+        * @param businessKey1 业务id1
+        * @param businessKey2 业务id2
+        * @param businessKey3 业务id3
+        * @return {@link MqMessage}
+        */
+       MqMessage addMessage(String messageType, String businessKey1, String businessKey2, String businessKey3);
+   
+       /**
+        * 完成任务
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int completed(Long messageId);
+   
+       /**
+        * 完成第一阶段任务
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int completedStageOne(Long messageId);
+   
+       /**
+        * 完成第二阶段任务
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int completedStageTwo(Long messageId);
+   
+       /**
+        * 完成第三阶段任务
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int completedStageThree(Long messageId);
+   
+       /**
+        * 完成第四阶段任务
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int completedStageFour(Long messageId);
+   
+       /**
+        * 查询第一阶段状态
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int getStageOne(Long messageId);
+   
+       /**
+        * 查询第二阶段状态
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int getStageTwo(Long messageId);
+   
+       /**
+        * 查询第三阶段状态
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int getStageThree(Long messageId);
+   
+       /**
+        * 查询第四阶段状态
+        *
+        * @param messageId 消息id
+        * @return int
+        */
+       int getStageFour(Long messageId);
+   }
+   ```
+
+   ```java
+   /**
+    * <p>
+    * 消息队列消息表 服务实现类
+    * </p>
+    *
+    * @author elonlo
+    * @since 2024-01-21
+    */
+   @Service
+   public class MqMessageServiceImpl extends ServiceImpl<MqMessageMapper, MqMessage> implements IMqMessageService {
+   
+       private final MqMessageMapper mqMessageMapper;
+   
+       private final MqMessageHistoryMapper mqMessageHistoryMapper;
+   
+       public MqMessageServiceImpl(MqMessageMapper mqMessageMapper, MqMessageHistoryMapper mqMessageHistoryMapper) {
+           this.mqMessageMapper = mqMessageMapper;
+           this.mqMessageHistoryMapper = mqMessageHistoryMapper;
+       }
+   
+       /**
+        * 扫描消息表记录,查询未处理的消息
+        */
+       @Override
+       public List<MqMessage> getMessageList(int shardIndex, int shardTotal, String messageType, int count) {
+           return mqMessageMapper.selectListByShardIndex(shardIndex, shardTotal, messageType, count);
+       }
+   
+       /**
+        * 添加消息
+        */
+       @Override
+       public MqMessage addMessage(String messageType, String businessKey1, String businessKey2, String businessKey3) {
+           MqMessage mqMessage = new MqMessage();
+           mqMessage.setMessageType(messageType);
+           mqMessage.setBusinessKey1(businessKey1);
+           mqMessage.setBusinessKey2(businessKey2);
+           mqMessage.setBusinessKey3(businessKey3);
+           int insert = mqMessageMapper.insert(mqMessage);
+           if (insert > 0) {
+               return mqMessage;
+           } else {
+               return null;
+           }
+   
+       }
+   
+       /**
+        * 完成任务
+        */
+       @Transactional
+       @Override
+       public int completed(Long messageId) {
+           MqMessage mqMessage = new MqMessage();
+           // 完成任务
+           mqMessage.setState("1");
+           int update = mqMessageMapper.update(mqMessage, new LambdaQueryWrapper<MqMessage>()
+                   .eq(MqMessage::getId, messageId));
+           if (update > 0) {
+   
+               mqMessage = mqMessageMapper.selectById(messageId);
+               // 添加到历史表
+               MqMessageHistory mqMessageHistory = new MqMessageHistory();
+               BeanUtils.copyProperties(mqMessage, mqMessageHistory);
+               mqMessageHistoryMapper.insert(mqMessageHistory);
+               // 删除消息表
+               mqMessageMapper.deleteById(messageId);
+               return 1;
+           }
+           return 0;
+   
+       }
+   
+       /**
+        * 完成第一阶段任务
+        */
+       @Override
+       public int completedStageOne(Long messageId) {
+           MqMessage mqMessage = new MqMessage();
+           // 完成阶段1任务
+           mqMessage.setStageState1("1");
+           return mqMessageMapper.update(mqMessage, new LambdaQueryWrapper<MqMessage>()
+                   .eq(MqMessage::getId, messageId));
+       }
+   
+       /**
+        * 完成第二阶段任务
+        */
+       @Override
+       public int completedStageTwo(Long messageId) {
+           MqMessage mqMessage = new MqMessage();
+           // 完成阶段2任务
+           mqMessage.setStageState2("1");
+           return mqMessageMapper.update(mqMessage, new LambdaQueryWrapper<MqMessage>()
+                   .eq(MqMessage::getId, messageId));
+       }
+   
+       /**
+        * 完成第三阶段任务
+        */
+       @Override
+       public int completedStageThree(Long messageId) {
+           MqMessage mqMessage = new MqMessage();
+           // 完成阶段3任务
+           mqMessage.setStageState3("1");
+           return mqMessageMapper.update(mqMessage, new LambdaQueryWrapper<MqMessage>()
+                   .eq(MqMessage::getId, messageId));
+       }
+   
+       /**
+        * 完成第四阶段任务
+        */
+       @Override
+       public int completedStageFour(Long messageId) {
+           MqMessage mqMessage = new MqMessage();
+           // 完成阶段4任务
+           mqMessage.setStageState4("1");
+           return mqMessageMapper.update(mqMessage, new LambdaQueryWrapper<MqMessage>()
+                   .eq(MqMessage::getId, messageId));
+       }
+   
+       /**
+        * 查询第一阶段状态
+        */
+       @Override
+       public int getStageOne(Long messageId) {
+           return Integer.parseInt(mqMessageMapper.selectById(messageId).getStageState1());
+       }
+   
+       /**
+        * 查询第二阶段状态
+        */
+       @Override
+       public int getStageTwo(Long messageId) {
+           return Integer.parseInt(mqMessageMapper.selectById(messageId).getStageState2());
+       }
+   
+       /**
+        * 查询第三阶段状态
+        */
+       @Override
+       public int getStageThree(Long messageId) {
+           return Integer.parseInt(mqMessageMapper.selectById(messageId).getStageState3());
+       }
+   
+       /**
+        * 查询第四阶段状态
+        */
+       @Override
+       public int getStageFour(Long messageId) {
+           return Integer.parseInt(mqMessageMapper.selectById(messageId).getStageState4());
+       }
+   }
+   ```
+
+   ```java
+   /**
+    * <p>
+    * 消息队列消息表 Mapper 接口
+    * </p>
+    *
+    * @author elonlo
+    * @since 2024-01-21
+    */
+   public interface MqMessageMapper extends BaseMapper<MqMessage> {
+   
+       /**
+        * 查询消息表中未处理的消息
+        */
+       @Select("SELECT t.* FROM mq_message t WHERE t.id % #{shardTotal} = #{shardIndex} and t.state='0' and t.message_type=#{messageType} limit #{count}")
+       List<MqMessage> selectListByShardIndex(@Param("shardIndex") int shardIndex, @Param("shardTotal") int shardTotal, @Param("messageType") String messageType, @Param("count") int count);
+   }
+   ```
+
+6. 添加消息处理抽象类
+
+   ```java
+   /**
+    * 消息处理抽象类
+    *
+    * @author elonlo
+    * @date 2024/1/21 23:51
+    */
+   @Slf4j
+   @Data
+   public abstract class MessageProcessAbstract {
+   
+       @Resource
+       private IMqMessageService mqMessageService;
+   
+       /**
+        * @param mqMessage 执行任务内容
+        * @return boolean true:处理成功，false处理失败
+        */
+       public abstract boolean execute(MqMessage mqMessage);
+   
+       /**
+        * @param shardIndex  分片序号
+        * @param shardTotal  分片总数
+        * @param messageType 消息类型
+        * @param count       一次取出任务总数
+        * @param timeout     预估任务执行时间,到此时间如果任务还没有结束则强制结束 单位秒
+        */
+       public void process(int shardIndex, int shardTotal, String messageType, int count, long timeout) {
+   
+           try {
+               // 扫描消息表获取任务清单
+               List<MqMessage> messageList = mqMessageService.getMessageList(shardIndex, shardTotal, messageType, count);
+               // 任务个数
+               int size = messageList.size();
+               log.debug("取出待处理消息" + size + "条");
+               if (size <= 0) {
+                   return;
+               }
+   
+               // 创建线程池
+               ExecutorService threadPool = Executors.newFixedThreadPool(size);
+               // 计数器
+               CountDownLatch countDownLatch = new CountDownLatch(size);
+               messageList.forEach(message -> threadPool.execute(() -> {
+                   log.debug("开始任务:{}", message);
+                   // 处理任务
+                   try {
+                       boolean result = execute(message);
+                       if (result) {
+                           log.debug("任务执行成功:{})", message);
+                           // 更新任务状态,删除消息表记录,添加到历史表
+                           int completed = mqMessageService.completed(Long.parseLong(message.getId()));
+                           if (completed > 0) {
+                               log.debug("任务执行成功:{}", message);
+                           } else {
+                               log.debug("任务执行失败:{}", message);
+                           }
+                       }
+                   } catch (Exception e) {
+                       e.printStackTrace();
+                       log.debug("任务出现异常:{},任务:{}", e.getMessage(), message);
+                   } finally {
+                       // 计数
+                       countDownLatch.countDown();
+                   }
+                   log.debug("结束任务:{}", message);
+               }));
+   
+               // 等待,给一个充裕的超时时间,防止无限等待，到达超时时间还没有处理完成则结束任务
+               countDownLatch.await(timeout, TimeUnit.SECONDS);
+               log.debug("任务完成...");
+           } catch (InterruptedException e) {
+               e.printStackTrace();
+           }
+       }
+   }
+   ```
+
+### 10.4 课程发布
+
+1. 添加消息SDK（xuecheng-plus-content-service）
+
+   ```xml
+   <!-- 本地消息SDK -->
+   <dependency>
+       <groupId>com.yu.xuecheng</groupId>
+       <artifactId>xuecheng-plus-message</artifactId>
+       <version>1.0-SNAPSHOT</version>
+   </dependency>
+   ```
+
+2. 添加课程发布接口
+
+   ```java
+   @ApiOperation(value = "课程发布")
+   @ResponseBody
+   @PostMapping("/course/publish/{courseId}")
+   public void publish(@PathVariable("courseId") Long courseId) {
+       Long companyId = 1232141425L;
+       coursePublishService.publish(companyId, courseId);
+   }
+   ```
+
+   ```java
+   /**
+    * 课程发布
+    */
+   @Override
+   public void publish(Long companyId, Long courseId) {
+       // 1.查询课程预发布信息
+       CoursePublishPre coursePublishPre = coursePublishPreMapper.selectById(courseId);
+       if (Objects.isNull(coursePublishPre)) {
+           throw new BusinessException("课程不存在");
+       }
+   
+       // 2.判断课程是否审核通过,未通过不允许发布
+       String status = coursePublishPre.getStatus();
+       if (!Objects.equals("202004", status)) {
+           throw new BusinessException("课程审核不通过,请联系管理员");
+       }
+   
+       // 3.向课程发布表中写入数据,有则更新,没有则添加
+       CoursePublish coursePublish = new CoursePublish();
+       BeanUtils.copyProperties(coursePublishPre, coursePublish);
+       CoursePublish publish = coursePublishMapper.selectById(courseId);
+       if (Objects.isNull(publish)) {
+           // 修改状态为已发布
+           coursePublish.setStatus("202002");
+           coursePublishMapper.insert(coursePublish);
+       } else {
+           coursePublishMapper.updateById(coursePublish);
+       }
+   
+       // 4.修改课程基本信息表状态
+       CourseBase courseBase = courseBaseService.getById(courseId);
+       courseBase.setStatus("202002");
+       courseBaseService.updateById(courseBase);
+   
+       // 5.向本地消息表写入数据
+       mqMessageService.addMessage("course_publish", String.valueOf(courseId), null, null);
+   
+       // 6.删除课程预发布信息
+       coursePublishPreMapper.deleteById(courseId);
+   }
+   ```
+
+3. 课程发布定时任务
+
+   ```java
+   /**
+    * 课程发布定时任务
+    *
+    * @author elonlo
+    * @date 2024/1/24 20:50
+    */
+   @Slf4j
+   @Component
+   public class CoursePublishJobHandler extends MessageProcessAbstract {
+   
+       /**
+        * 课程发布任务
+        */
+       @Override
+       public boolean execute(MqMessage mqMessage) {
+           // 1、获取课程id
+           long courseId = Long.parseLong(mqMessage.getBusinessKey1());
+   
+           // 2、生成课程静态化页面上传至文件系统
+           // 生成
+           generateCourseHtml(mqMessage, courseId);
+   
+           // 3、向elasticsearch写如课程索引数据
+           writeCourseESData(mqMessage, courseId);
+   
+           // 4、将课程数据写入缓存中
+           writeCacheData(mqMessage, courseId);
+   
+           // 5、上传都完成则发布任务成功
+           return true;
+       }
+   
+   
+       /**
+        * 生成课程静态化页面上传至文件系统
+        */
+       private void generateCourseHtml(MqMessage mqMessage, long courseId) {
+           // 获取消息id
+           String messageId = mqMessage.getId();
+   
+           IMqMessageService mqMessageService = this.getMqMessageService();
+   
+           // TODO 任务幂等性处理
+   
+           // 第一阶段任务是否完成 & 直接返回,否则继续完成第一阶段任务
+           int stageOne = mqMessageService.getStageOne(Long.parseLong(messageId));
+   
+           if (stageOne > 0) {
+               log.debug("课程静态化任务已经完成,无需处理......");
+               return;
+           }
+   
+           mqMessageService.completedStageOne(Long.parseLong(messageId));
+       }
+   
+       /**
+        * 向elasticsearch写入课程索引数据
+        */
+       private void writeCourseESData(MqMessage mqMessage, long courseId) {
+           // 获取消息id
+           String messageId = mqMessage.getId();
+   
+           IMqMessageService mqMessageService = this.getMqMessageService();
+   
+           // TODO 任务幂等性处理
+   
+           // 第二阶段任务是否完成 & 直接返回,否则继续完成第二阶段任务
+           int stageTwo = mqMessageService.getStageTwo(Long.parseLong(messageId));
+   
+           if (stageTwo > 0) {
+               log.debug("向elasticsearch写入课程索引数据任务已经完成,无需处理......");
+               return;
+           }
+   
+           mqMessageService.completedStageTwo(Long.parseLong(messageId));
+       }
+   
+       /**
+        * 将课程数据写入缓存中
+        */
+       private void writeCacheData(MqMessage mqMessage, long courseId) {
+           // 获取消息id
+           String messageId = mqMessage.getId();
+   
+           IMqMessageService mqMessageService = this.getMqMessageService();
+   
+           // TODO 任务幂等性处理
+   
+           // 第三阶段任务是否完成 & 直接返回,否则继续完成第三阶段任务
+           int stageThree = mqMessageService.getStageThree(Long.parseLong(messageId));
+   
+           if (stageThree > 0) {
+               log.debug("课程数据写入缓存任务已经完成,无需处理......");
+               return;
+           }
+   
+           mqMessageService.completedStageThree(Long.parseLong(messageId));
+       }
+   }
+   ```
+
+### 10.5 页面静态化
+
+1. 添加依赖（xuecheng-plus-content-service）
+2. 添加模板引擎工具类
+3. 
 
 
 
