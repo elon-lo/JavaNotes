@@ -7911,7 +7911,217 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
 
 1. 创建消息模块工程
 
-2. 添加以下依赖信息
+2. 添加消息实体类
+
+   ```java
+   @Data
+   @EqualsAndHashCode(callSuper = false)
+   @Accessors(chain = true)
+   @TableName("mq_message")
+   public class MqMessage implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 消息id
+        */
+       @TableId(value = "id", type = IdType.AUTO)
+       private String id;
+   
+       /**
+        * 消息类型代码
+        */
+       private String messageType;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey1;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey2;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey3;
+   
+       /**
+        * 消息队列主机
+        */
+       @TableField(exist = false)
+       private String mqHost;
+   
+       /**
+        * 消息队列端口
+        */
+       @TableField(exist = false)
+       private Integer mqPort;
+   
+       /**
+        * 消息队列虚拟主机
+        */
+       @TableField(exist = false)
+       private String mqVirtualhost;
+   
+       /**
+        * 队列名称
+        */
+       @TableField(exist = false)
+       private String mqQueue;
+   
+       /**
+        * 通知次数
+        */
+       @TableField(exist = false)
+       private Integer informNum;
+   
+       /**
+        * 处理状态，0:初始，1:成功
+        */
+       private String state;
+   
+       /**
+        * 回复失败时间
+        */
+       private LocalDateTime returnfailureDate;
+   
+       /**
+        * 回复成功时间
+        */
+       private LocalDateTime returnsuccessDate;
+   
+       /**
+        * 回复失败内容
+        */
+       private String returnfailureMsg;
+   
+       /**
+        * 最近通知时间
+        */
+       @TableField(exist = false)
+       private LocalDateTime informDate;
+   
+       /**
+        * 阶段1处理状态, 0:初始，1:成功
+        */
+       private String stageState1;
+   
+       /**
+        * 阶段2处理状态, 0:初始，1:成功
+        */
+       private String stageState2;
+   
+       /**
+        * 阶段3处理状态, 0:初始，1:成功
+        */
+       private String stageState3;
+   
+       /**
+        * 阶段4处理状态, 0:初始，1:成功
+        */
+       private String stageState4;
+   }
+   ```
+
+   ```java
+   @Data
+   @EqualsAndHashCode(callSuper = false)
+   @Accessors(chain = true)
+   @TableName("mq_message_history")
+   public class MqMessageHistory implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 消息id
+        */
+       @TableId(value = "id", type = IdType.AUTO)
+       private String id;
+   
+       /**
+        * 消息类型代码
+        */
+       private String messageType;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey1;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey2;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey3;
+   
+       /**
+        * 消息队列主机
+        */
+       private String mqHost;
+   
+       /**
+        * 消息队列端口
+        */
+       private Integer mqPort;
+   
+       /**
+        * 消息队列虚拟主机
+        */
+       private String mqVirtualhost;
+   
+       /**
+        * 队列名称
+        */
+       private String mqQueue;
+   
+       /**
+        * 通知次数
+        */
+       private Integer informNum;
+   
+       /**
+        * 处理状态，0:初始，1:成功，2:失败
+        */
+       private Integer state;
+   
+       /**
+        * 回复失败时间
+        */
+       private LocalDateTime returnfailureDate;
+   
+       /**
+        * 回复成功时间
+        */
+       private LocalDateTime returnsuccessDate;
+   
+       /**
+        * 回复失败内容
+        */
+       private String returnfailureMsg;
+   
+       /**
+        * 最近通知时间
+        */
+       private LocalDateTime informDate;
+   
+       private String stageState1;
+   
+       private String stageState2;
+   
+       private String stageState3;
+   
+       private String stageState4;
+   }
+   ```
+
+3. 添加以下依赖信息
 
    ```xml
    <?xml version="1.0" encoding="UTF-8"?>
@@ -7991,9 +8201,9 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
    </project>
    ```
 
-3. 使用插件生成`mq_message`，`mq_message_history`的 PO等信息
+4. 使用插件生成`mq_message`，`mq_message_history`的 PO等信息
 
-4. 添加 `MyBatisPlusConfig` 配置类
+5. 添加 `MyBatisPlusConfig` 配置类
 
    ```java
    @Configuration
@@ -8003,7 +8213,7 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
    }
    ```
 
-5. 添加消息相关接口和实现类
+6. 添加消息相关接口和实现类
 
    ```java
    /**
@@ -8285,7 +8495,7 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
    }
    ```
 
-6. 添加消息处理抽象类
+7. 添加消息处理抽象类
 
    ```java
    /**
@@ -8455,7 +8665,6 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
            long courseId = Long.parseLong(mqMessage.getBusinessKey1());
    
            // 2、生成课程静态化页面上传至文件系统
-           // 生成
            generateCourseHtml(mqMessage, courseId);
    
            // 3、向elasticsearch写如课程索引数据
@@ -8536,12 +8745,838 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
        }
    }
    ```
+   
+4. 注释掉 `xuecheng-plus-content-service` 模块的`MybatisPlusConfig`，否则会冲突
 
 ### 10.5 页面静态化
 
 1. 添加依赖（xuecheng-plus-content-service）
-2. 添加模板引擎工具类
-3. 
+
+   ```xml
+   <!-- freemarker 模板引擎依赖 -->
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-freemarker</artifactId>
+   </dependency>
+   ```
+
+2. 添加页面静态化工具类
+
+   ```java
+   /**
+    * 模板页面工具类
+    *
+    * @author elonlo
+    * @date 2024/1/28 14:31
+    */
+   public class TemplatePageUtils {
+   
+       /**
+        * 生成模板文件
+        *
+        * @param coursePreviewVO 课程预览数据
+        * @return {@link File}
+        */
+       public static File generateTemplate(CoursePreviewVO coursePreviewVO) {
+           Configuration configuration = new Configuration(Configuration.getVersion());
+   
+           SpringTemplateLoader templateLoader = new SpringTemplateLoader(resourceLoader, "classpath:templates");
+   
+           // 指定模板的目录
+           File templateFile = null;
+           try {
+               configuration.setTemplateLoader(templateLoader);
+   
+               //指定编码
+               configuration.setDefaultEncoding("utf-8");
+   
+               Map<String, Object> map = new HashMap<>(16);
+               map.put("model", coursePreviewVO);
+   
+               Template template = configuration.getTemplate("courseTemplate.ftl");
+   
+               // Template template 模板, Object model 数据
+               String html = FreeMarkerTemplateUtils.processTemplateIntoString(template, map);
+   
+               // 输入流
+               InputStream inputStream = IOUtils.toInputStream(html, "utf-8");
+   
+               // 输出文件
+               Long id = coursePreviewVO.getCourseBase().getId();
+               templateFile = new File("d:/home/" + id + ".html");
+               FileOutputStream outputStream = new FileOutputStream(templateFile);
+   
+               // 使用流将html写入文件
+               IOUtils.copy(inputStream, outputStream);
+           } catch (IOException | TemplateException e) {
+               e.printStackTrace();
+           }
+           return templateFile;
+       }
+   }
+   ```
+
+3. 添加远程调用依赖
+
+   ```xml
+   <properties>
+       <feign-form.version>3.8.0</feign-form.version>
+   </properties>
+   
+   <!-- 服务发现 -->
+   <dependency>
+       <groupId>com.alibaba.cloud</groupId>
+       <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+   </dependency>
+   
+   <!-- 微服务远程调用 -->
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-openfeign</artifactId>
+   </dependency>
+   
+   <dependency>
+       <groupId>io.github.openfeign</groupId>
+       <artifactId>feign-httpclient</artifactId>
+   </dependency>
+   
+   <!-- feign支持multipart格式传参 -->
+   <dependency>
+       <groupId>io.github.openfeign.form</groupId>
+       <artifactId>feign-form</artifactId>
+       <version>${feign-form.version}</version>
+   </dependency>
+   
+   <dependency>
+       <groupId>io.github.openfeign.form</groupId>
+       <artifactId>feign-form-spring</artifactId>
+       <version>${feign-form.version}</version>
+   </dependency>
+   ```
+
+4. `Nacos` 配置 `feign` 熔断、降级公共配置
+
+   ```yaml
+   feign:
+     hystrix:
+       enabled: true
+     circuitbreaker:
+       enabled: true
+   hystrix:
+     command:
+       default:
+         execution:
+           isolation:
+             thread:
+               # 熔断超时时间
+               timeoutInMilliseconds: 30000
+   ribbion:
+     # 连接超时时间
+     ConnectTimeout: 60000
+     # 读超时时间 
+     ReadTimeout: 60000
+     # 重试次数
+     MaxAutoRetries: 0
+     # 切换实例的重试次数
+     MaxAutoRetriesNextServer: 1
+   ```
+
+5. `xuecheng-plus-content-service` 模块引入 `feign` 公共配置
+
+   ```yaml
+   spring:
+     application:
+       name: content-service
+     cloud:
+       nacos:
+         server-addr: ip:port
+         # 配置中心配置
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           # 读取公共配置
+           shared-configs:
+               - data-id: logging-${spring.profiles.active}.yaml
+                 group: xuecheng-plus-common
+                 refresh: true
+               - data-id: feign-${spring.profiles.active}.yaml
+                 group: xuecheng-plus-common
+                 refresh: true
+   ```
+
+6. 添加 `Multipart` 配置类（xuecheng-plus-content-service）
+
+   ```java
+   /**
+    * MultiPart支持配置
+    *
+    * @author elonlo
+    * @date 2024/1/28 15:21
+    */
+   @Configuration
+   public class MultipartSupportConfig {
+   
+       @Autowired
+       private ObjectFactory<HttpMessageConverters> messageConverters;
+   
+       /**
+        * '@Primary' 注入相同类型的bean时优先使用
+        */
+       @Bean
+       @Primary
+       @Scope("prototype")
+       public Encoder feignEncoder() {
+           return new SpringFormEncoder(new SpringEncoder(messageConverters));
+       }
+   }
+   ```
+
+7. 添加 `multipart` 文件处理工具类方法（xuecheng-plus-base）
+
+   ```xml
+   <properties>
+       <commons-fileupload.version>1.4</commons-fileupload.version>
+   </properties>
+   
+   <dependency>
+       <groupId>commons-fileupload</groupId>
+       <artifactId>commons-fileupload</artifactId>
+       <version>${commons-fileupload.version}</version>
+   </dependency>
+   ```
+
+   ```java
+   public class FileUtil {
+   
+       /**
+        * file转为MultipartFile
+        */
+       public static MultipartFile getMultipartFile(File file) {
+           FileItem item = new DiskFileItemFactory()
+                   .createItem("file", MediaType.MULTIPART_FORM_DATA_VALUE, true, file.getName());
+           try (FileInputStream inputStream = new FileInputStream(file);
+                OutputStream outputStream = item.getOutputStream()) {
+               IOUtils.copy(inputStream, outputStream);
+           } catch (Exception e) {
+               e.printStackTrace();
+           }
+           return new CommonsMultipartFile(item);
+       }
+   }
+   ```
+
+8. 扩展 `xuecheng-plus-media-service` 模块上传文件到 `minio` 接口
+
+   ```java
+   @RestController
+   public class MediaController {
+   
+       private final IMediaFilesService mediaFilesService;
+   
+       public MediaController(IMediaFilesService mediaFilesService) {
+           this.mediaFilesService = mediaFilesService;
+       }
+   
+       @ApiOperation(value = "文件上传")
+       @PostMapping("/upload/course")
+       public ResultResponse<UploadFileVO> uploadFile(@RequestPart("file") MultipartFile file,
+                                                      @RequestParam(value = "objectName", required = false) String objectName) {
+           UploadFileVO uploadFileVO = mediaFilesService.uploadFile(file, objectName);
+           return ResultResponse.success(uploadFileVO);
+       }
+   }
+   ```
+
+   ```java
+   /**
+    * 上传文件
+    *
+    * @param file       文件
+    * @param objectName 对象名称,不传则根据规则生成
+    * @return {@link UploadFileVO}
+    */
+   UploadFileVO uploadFile(MultipartFile file, String objectName);
+   ```
+
+   ```java
+   /**
+    * 上传文件
+    */
+   @Override
+   public UploadFileVO uploadFile(MultipartFile file, String objectName) {
+       Long companyId = 12322332L;
+   
+       // 1.通过file构建UploadFileDTO参数
+       UploadFileDTO dto = new UploadFileDTO();
+       // 文件名称
+       dto.setFilename(file.getOriginalFilename());
+       // 文件大小
+       dto.setFileSize(file.getSize());
+       // 文件类型
+       dto.setFileType("001001");
+   
+       // 2.通过file构建localFilePath
+       String localFilePath = this.getLocalFilePath(file);
+   
+       // 3.上传文件到minio
+       String fileName = dto.getFilename();
+       // 获取文件扩展名
+       String extensionName = fileName.substring(fileName.lastIndexOf("."));
+   
+       // 获取文件类型
+       String mimeType = FileUtil.getMimeType(extensionName);
+   
+       // 获取文件的md5
+       String fileMd5 = this.calculateFileMd5(new File(localFilePath));
+   
+       String defaultFolderPath = this.getDefaultFolderPath();
+   
+       // 对象名称为空时按规则生成
+       if (StringUtils.isEmpty(objectName)) {
+           objectName = defaultFolderPath + fileMd5 + extensionName;
+       }
+   
+       boolean uploadFlag = this.uploadMinio(minioProperties.getBucket().getFiles(), localFilePath, mimeType, objectName);
+       if (!uploadFlag) {
+           throw new BusinessException("文件上传失败");
+       }
+   
+       // 4.保存文件信息到数据库
+       MediaFiles mediaFiles = mediaFilesService.saveFile(companyId, fileMd5, dto, minioProperties.getBucket().getFiles(), objectName);
+       if (Objects.isNull(mediaFiles)) {
+           throw new BusinessException("保存文件信息到数据库失败");
+       }
+   
+       return CopyUtils.copy(mediaFiles, UploadFileVO.class);
+   }
+   ```
+
+9. 远程调用上传接口
+
+   ```java
+   /**
+    * 媒资服务远程调用
+    *
+    * @author elonlo
+    * @date 2024/1/29 21:35
+    */
+   @FeignClient(value = "media-api", configuration = {MultipartSupportConfig.class})
+   public interface MediaServiceClient {
+   
+       /**
+        * 文件上传
+        */
+       @PostMapping(value = "/media/upload/course", produces = "application/json;charset=UTF-8",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+       String uploadFile(@RequestPart("file") MultipartFile file,
+                         @RequestParam(value = "objectName", required = false) String objectName);
+   }
+   ```
+
+   ```java
+   /**
+    * 内容管理系统接口启动类
+    *
+    * @author elonlo
+    * @date 2023/9/16 23:24
+    */
+   @EnableFeignClients(basePackages = "com.yu.xuecheng.content.feign")
+   @SpringBootApplication
+   public class ContentApiApplication {
+   
+       public static void main(String[] args) {
+           SpringApplication.run(ContentApiApplication.class, args);
+       }
+   }
+   ```
+
+10. 生成消息实体类（xuecheng-plus-content-model）
+
+   ```java
+   @Data
+   @EqualsAndHashCode(callSuper = false)
+   @Accessors(chain = true)
+   @TableName("mq_message")
+   public class MqMessage implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 消息id
+        */
+       @TableId(value = "id", type = IdType.AUTO)
+       private Long id;
+   
+       /**
+        * 消息类型代码: course_publish ,  media_test
+        */
+       private String messageType;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey1;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey2;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey3;
+   
+       /**
+        * 通知次数
+        */
+       private Integer executeNum;
+   
+       /**
+        * 处理状态，0:初始，1:成功
+        */
+       private String state;
+   
+       /**
+        * 回复失败时间
+        */
+       private LocalDateTime returnfailureDate;
+   
+       /**
+        * 回复成功时间
+        */
+       private LocalDateTime returnsuccessDate;
+   
+       /**
+        * 回复失败内容
+        */
+       private String returnfailureMsg;
+   
+       /**
+        * 最近通知时间
+        */
+       private LocalDateTime executeDate;
+   
+       /**
+        * 阶段1处理状态, 0:初始，1:成功
+        */
+       private String stageState1;
+   
+       /**
+        * 阶段2处理状态, 0:初始，1:成功
+        */
+       private String stageState2;
+   
+       /**
+        * 阶段3处理状态, 0:初始，1:成功
+        */
+       private String stageState3;
+   
+       /**
+        * 阶段4处理状态, 0:初始，1:成功
+        */
+       private String stageState4;
+   }
+   ```
+
+   ```java
+   @Data
+   @EqualsAndHashCode(callSuper = false)
+   @Accessors(chain = true)
+   @TableName("mq_message_history")
+   public class MqMessageHistory implements Serializable {
+   
+       private static final long serialVersionUID = 1L;
+   
+       /**
+        * 消息id
+        */
+       @TableId(value = "id", type = IdType.AUTO)
+       private Long id;
+   
+       /**
+        * 消息类型代码
+        */
+       private String messageType;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey1;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey2;
+   
+       /**
+        * 关联业务信息
+        */
+       private String businessKey3;
+   
+       /**
+        * 通知次数
+        */
+       private Integer executeNum;
+   
+       /**
+        * 处理状态，0:初始，1:成功，2:失败
+        */
+       private Integer state;
+   
+       /**
+        * 回复失败时间
+        */
+       private LocalDateTime returnfailureDate;
+   
+       /**
+        * 回复成功时间
+        */
+       private LocalDateTime returnsuccessDate;
+   
+       /**
+        * 回复失败内容
+        */
+       private String returnfailureMsg;
+   
+       /**
+        * 最近通知时间
+        */
+       private LocalDateTime executeDate;
+   
+       private String stageState1;
+   
+       private String stageState2;
+   
+       private String stageState3;
+   
+       private String stageState4;
+   }
+   ```
+
+   注意：`mq_message_history`需要添加自增，否则添加数据行时会提示 `id` 不能为空
+
+11. 生成课程静态化页面上传至文件系统
+
+    ```java
+    /**
+     * 生成课程静态化页面上传至文件系统
+     */
+    private void generateCourseHtml(MqMessage mqMessage, long courseId) {
+        // 获取消息id
+        String messageId = mqMessage.getId();
+    
+        IMqMessageService mqMessageService = this.getMqMessageService();
+    
+        // 生成课程静态化页面
+        File courseHtml = coursePublishService.generateCourseHtml(courseId);
+        if (Objects.isNull(courseHtml)) {
+            throw new BusinessException("生成课程静态化页面为空");
+        }
+    
+        // 上传文件
+        coursePublishService.uploadCourseHtml(courseId, courseHtml);
+    
+        // TODO 任务幂等性处理
+    
+        // 第一阶段任务是否完成 & 直接返回,否则继续完成第一阶段任务
+        int stageOne = mqMessageService.getStageOne(Long.parseLong(messageId));
+    
+        if (stageOne > 0) {
+            log.debug("课程静态化任务已经完成,无需处理......");
+            return;
+        }
+    
+        mqMessageService.completedStageOne(Long.parseLong(messageId));
+    }
+    ```
+
+12. 生成课程静态化页面
+
+    ```java
+    @Slf4j
+    @Service
+    public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, CoursePublish> implements ICoursePublishService {
+        
+        private final MediaServiceClient mediaServiceClient;
+    
+        private final ResourceLoader resourceLoader;
+    
+        public CoursePublishServiceImpl(MediaServiceClient mediaServiceClient, ResourceLoader resourceLoader) {
+            this.mediaServiceClient = mediaServiceClient;
+            this.resourceLoader = resourceLoader;
+        }
+        
+        /**
+         * 生成课程静态化页面
+         */
+        @Override
+        public File generateCourseHtml(Long courseId) {
+            Configuration configuration = new Configuration(Configuration.getVersion());
+    
+            SpringTemplateLoader templateLoader = new SpringTemplateLoader(resourceLoader, "classpath:templates");
+    
+            // 指定模板的目录
+            File templateFile = null;
+            try {
+                configuration.setTemplateLoader(templateLoader);
+    
+                //指定编码
+                configuration.setDefaultEncoding("utf-8");
+    
+                Map<String, Object> map = new HashMap<>(16);
+                CoursePreviewVO coursePreviewVO = this.getCoursePreviewInfo(courseId);
+                map.put("model", coursePreviewVO);
+    
+                Template template = configuration.getTemplate("courseTemplate.ftl");
+    
+                // Template template 模板, Object model 数据
+                String html = FreeMarkerTemplateUtils.processTemplateIntoString(template, map);
+    
+                // 输入流
+                InputStream inputStream = IOUtils.toInputStream(html, "utf-8");
+    
+                // 输出文件
+                templateFile = new File("d:/home/" + courseId + ".html");
+                FileOutputStream outputStream = new FileOutputStream(templateFile);
+    
+                // 使用流将html写入文件
+                IOUtils.copy(inputStream, outputStream);
+            } catch (IOException | TemplateException e) {
+                log.error("生成课程静态化页面失败, courseId: {}, 异常信息: []", courseId, e);
+                e.printStackTrace();
+            }
+            return templateFile;
+        }  
+    }
+    ```
+
+13. 上传课程静态化页面
+
+    ```java
+    @Slf4j
+    @Service
+    public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, CoursePublish> implements ICoursePublishService {
+    
+        private final MediaServiceClient mediaServiceClient;
+    
+        private final ResourceLoader resourceLoader;
+    
+        public CoursePublishServiceImpl(MediaServiceClient mediaServiceClient, ResourceLoader resourceLoader) {
+            this.mediaServiceClient = mediaServiceClient;
+            this.resourceLoader = resourceLoader;
+        }
+        
+        /**
+         * 上传课程静态化页面
+         */
+        @Override
+        public void uploadCourseHtml(Long courseId, File file) {
+            // 文件格式转化
+            MultipartFile multipartFile = FileUtil.getMultipartFile(file);
+    
+            String objectName = "course/" + courseId + ".html";
+    
+            try {
+                String uploadFile = mediaServiceClient.uploadFile(multipartFile, objectName);
+                if (StringUtils.isEmpty(uploadFile)) {
+                    log.debug("远程调用媒资文件上传失败,服务降级,courseId: {}", courseId);
+                    throw new BusinessException("上传课程静态化页面失败");
+                }
+            } catch (Exception e) {
+                log.error("上传课程静态化页面失败, courseId: {}, 异常信息: []", courseId, e);
+                e.printStackTrace();
+                throw new BusinessException("上传课程静态化页面失败");
+            }
+        }
+    }
+    ```
+
+### 10.6 熔断降级
+
+**什么是熔断降级？**
+
+微服务之间难免会存在服务之间的调用，比如服务 A 调用服务 B 的接口，当微服务运行不正常会导致无法正常调用微服务，此时会出现异常，如果不进行处理可能会导致雪崩效应。
+
+微服务之间的雪崩效应体现在服务与服务之间调用，当其中一个服务无法提供服务时，可能导致其他服务也死掉，比如服务 B 调用服务 A，由于 A 服务异常导致 B 服务响应缓慢，最后 B、C 等服务都不可用，像这样由一个服务引起的一连串的多个服务无法提供服务的现象就是微服务的雪崩效应。
+
+**熔断和降级的区别**
+
+**熔断**和**降级**的相同点都是为了解决微服务系统崩溃的问题，但它们是两个不同的技术手段，两者又存在联系。
+
+熔断：当下游服务异常而断开与上游服务的交互，下游服务异常触发了熔断，从而保证上游服务不受影响。
+
+降级：当下游服务异常触发熔断后，上游服务就不再去调用异常的微服务，而是执行了降级逻辑处理，这个降级逻辑处理可以是本地的单独的一个方法。
+
+#### 10.6.1 定义回调类实现远程调用接口
+
+```java
+@FeignClient(value = "media-api", configuration = {MultipartSupportConfig.class}, fallback = MediaServiceClientFallback.class)
+public interface MediaServiceClient {
+
+    /**
+     * 文件上传
+     */
+    @PostMapping(value = "/media/upload/course", produces = "application/json;charset=UTF-8",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    String uploadFile(@RequestPart("file") MultipartFile file,
+                      @RequestParam(value = "objectName", required = false) String objectName);
+}
+```
+
+```java
+/**
+ * 媒资服务远程调用失败回调类
+ *
+ * @author elonlo
+ * @date 2024/1/30 20:03
+ */
+@Slf4j
+@Component
+public class MediaServiceClientFallback implements MediaServiceClient {
+
+    @Override
+    public String uploadFile(MultipartFile file, String objectName) {
+        log.debug("媒资服务上传文件接口远程调用异常, 参数信息, objectName: {}", objectName);
+        return null;
+    }
+}
+```
+
+#### 10.6.2 定义回调类实现回调工厂接口
+
+```java
+@FeignClient(value = "media-api", configuration = {MultipartSupportConfig.class}, fallbackFactory = MediaServiceClientFallbackFactory.class)
+public interface MediaServiceClient {
+
+    /**
+     * 文件上传
+     */
+    @PostMapping(value = "/media/upload/course", produces = "application/json;charset=UTF-8",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    String uploadFile(@RequestPart("file") MultipartFile file,
+                      @RequestParam(value = "objectName", required = false) String objectName);
+}
+```
+
+```java
+/**
+ * 媒资服务远程调用回调工厂类
+ *
+ * @author elonlo
+ * @date 2024/1/30 20:10
+ */
+@Slf4j
+@Component
+public class MediaServiceClientFallbackFactory implements FallbackFactory<MediaServiceClient> {
+
+    @Override
+    public MediaServiceClient create(Throwable cause) {
+        log.debug("媒资服务上传文件接口远程调用异常, 异常信息: []", cause);
+        return (file, objectName) -> null;
+    }
+}
+```
+
+### 10.7 xxl-job 配置
+
+```java
+@Data
+@Component
+@ConfigurationProperties(prefix = XxlJobProperties.XXL_JOB_PREFIX)
+public class XxlJobProperties {
+
+    /**
+     * xxl-job属性前缀
+     */
+    public static final String XXL_JOB_PREFIX = "xxl.job";
+
+    /**
+     * 调度中心配置
+     */
+    private Admin admin;
+
+    /**
+     * 执行器配置
+     */
+    private Executor executor;
+
+    @Data
+    public static class Admin {
+
+        /**
+         * 调度中心部署根地址 [选填]：如调度中心集群部署存在多个地址则用逗号分隔。执行器将会使用该地址进行"执行器心跳注册"和"任务结果回调";为空则关闭自动注册
+         */
+        private String address;
+    }
+
+    @Data
+    public static class Executor {
+
+        /**
+         * 执行器AppName [选填]：执行器心跳注册分组依据；为空则关闭自动注册
+         */
+        private String appName;
+
+        /**
+         * 执行器注册 [选填]：优先使用该配置作为注册地址，为空时使用内嵌服务 ”IP:PORT“ 作为注册地址。从而更灵活的支持容器类型执行器动态IP和动态映射端口问题
+         */
+        private String address;
+
+        /**
+         * 执行器IP [选填]：默认为空表示自动获取IP，多网卡时可手动设置指定IP，该IP不会绑定Host仅作为通讯实用；地址信息用于 "执行器注册" 和 "调度中心请求并触发任务"
+         */
+        private String ip;
+
+        /**
+         * 执行器端口号 [选填]：小于等于0则自动获取；默认端口为9999，单机部署多个执行器时，注意要配置不同执行器端口
+         */
+        private int port;
+
+        /**
+         * 执行器运行日志文件存储磁盘路径 [选填] ：需要对该路径拥有读写权限；为空则使用默认路径
+         */
+        private String logPath;
+
+        /**
+         * 执行器日志文件保存天数 [选填] ： 过期日志自动清理, 限制值大于等于3时生效; 否则, 如-1, 关闭自动清理功能
+         */
+        private int logRetentionDays;
+    }
+
+    /**
+     * 执行器通讯TOKEN [选填]：非空时启用
+     */
+    private String accessToken;
+}
+```
+
+```java
+@Configuration
+public class XxlJobConfig {
+
+    public static final Logger logger = LoggerFactory.getLogger(XxlJobConfig.class);
+
+    @Resource
+    private XxlJobProperties xxlJobProperties;
+
+    @Bean
+    public XxlJobSpringExecutor xxlJobExecutor() {
+        logger.info(">>>>>>>>>>> xxl-job config init.");
+        XxlJobSpringExecutor xxlJobSpringExecutor = new XxlJobSpringExecutor();
+        xxlJobSpringExecutor.setAdminAddresses(xxlJobProperties.getAdmin().getAddress());
+        xxlJobSpringExecutor.setAppname(xxlJobProperties.getExecutor().getAppName());
+        xxlJobSpringExecutor.setAddress(xxlJobProperties.getExecutor().getAddress());
+        xxlJobSpringExecutor.setIp(xxlJobProperties.getExecutor().getIp());
+        xxlJobSpringExecutor.setPort(xxlJobProperties.getExecutor().getPort());
+        xxlJobSpringExecutor.setAccessToken(xxlJobProperties.getAccessToken());
+        xxlJobSpringExecutor.setLogPath(xxlJobProperties.getExecutor().getLogPath());
+        xxlJobSpringExecutor.setLogRetentionDays(xxlJobProperties.getExecutor().getLogRetentionDays());
+        return xxlJobSpringExecutor;
+    }
+}
+```
+
+
 
 
 
