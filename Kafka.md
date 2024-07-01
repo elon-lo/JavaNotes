@@ -456,5 +456,467 @@
 
 注意：如启动时提示命令行过长，将 `cluster` 目录移动到电脑磁盘根目录下，然后修改 `zookeeper`、`Kafka` 中配置文件 `log` 文件存放地址即可。如在集群启动过程中报错，可以执行完集群清理脚本然后再重新启动。
 
+## 四、Zookeeper
+
+### 4.1 基础架构
+
+![image-20240630091156889](https://image.elonlo.top/img/2024/06/30/6680b0e82ed97.png)
+
+### 4.2 核心功能
+
+![image-20240630092659544](https://image.elonlo.top/img/2024/06/30/6680b4664badf.png)
+
+### 4.3 选举流程
+
+1. 多个节点各自注册 **Broker** 节点，添加到 `/brokers/ids` 中
+2. Kafka 监听器监听 **controller** 节点
+3. 默认按节点启动顺序将第一个启动的节点注册并选举为 **controller** 节点，后续节点注册时将无法选举为 **controller** 节点
+4. **controller** 节点启动监听器监听 `/brokers/ids` 中各节点的情况
+5. 新增 `broker` 节点时会通知 **controller** 节点集群的变化
+6.  **controller** 节点连接新增的 `broker` 节点，发送集群的相关数据
+7. 当 **controller** 节点被删除时，由于监听器的存在，`Kafka` 会通知所有 `broker` 节点删除的情况
+8. 所有broker节点会重新去争抢注册为 `controller` 节点，此时正常情况下第二个注册的 `broker`  节点将被选举为 **controller** 节点
+9. 最新选举为 **controller** 节点启动监听器监听 `/brokers/ids` 中各节点的情况
+10.  **controller** 节点连接所有的 `broker`，发送集群的相关数据
+
+## 五、主题
+
+### 5.1 创建主题
+
+```java
+/**
+ * Kafka主题
+ *
+ * @author elonlo
+ * @date 2024/6/30 15:54
+ */
+public class KafkaAdminTopicTest {
+
+	/**
+	 * kafka服务地址
+	 */
+	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+
+	/**
+	 * 主题一
+	 */
+	private static final String topic_one = "test1";
+
+	/**
+	 * 主题二
+	 */
+	private static final String topic_two = "test2";
+
+	public static void main(String[] args) {
+
+		// 1、创建管理员对象
+		Map<String, Object> configMap = new HashMap<>(4);
+		configMap.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+		final Admin admin = Admin.create(configMap);
+
+		// 2、构建主题对象
+		// 构建主题需要传递三个参数
+		//  第一个参数表示主题的名称: 字母,数字,点,下划线,中横线
+		//  第二个参数表示主题分区的数量: int
+		//  第三个参数表示主题分区副本的（因子）数量: short
+		int partitionCount = 1;
+		short replicationCount = 1;
+		NewTopic topic1 = new NewTopic(topic_one, partitionCount, replicationCount);
+
+		partitionCount = 2;
+		replicationCount = 2;
+		NewTopic topic2 = new NewTopic(topic_two, partitionCount, replicationCount);
+
+		String topicName = "test3";
+		Map<Integer, List<Integer>> map = new HashMap<>(4);
+		// 表示当前节点的第几个分区在哪个节点上有leader副本和follower副本,比如map.put(0, Arrays.asList(3, 1))
+		// 表示在test3主题的第一个分区在node-3节点(即Kafka启动的服务)上面有leader副本,在node-1上面有follower副本,并且数据为test3-0
+		map.put(0, Arrays.asList(3, 1));
+		// node-2: test3-1, node-3: test3-1
+		map.put(1, Arrays.asList(2, 3));
+		// node-1: test3-2, node-2: test3-2
+		map.put(2, Arrays.asList(1, 2));
+		NewTopic topic3 = new NewTopic(topicName, map);
+
+		// 3、创建主题
+		CreateTopicsResult topics = admin.createTopics(Arrays.asList(topic1, topic2, topic3));
+        
+        // In - Sync - Replicas:    同步副本列表(ISR)
+
+		// 4、关闭管理员对象
+		admin.close();
+	}
+}
+```
+
+### 5.2 主题分区副本策略
+
+`Kafka` 默认创建的主题分区副本策略可能不是最优的。下面是一个简单的副本分区判断方法案例：
+
+**test1 主题创建一个分区，一个副本**
+
+```tex
+Topic: test1    TopicId: 9uFWtvdATSSWTmp_IfT6eQ PartitionCount: 1       ReplicationFactor: 1    Configs:
+        Topic: test1    Partition: 0    Leader: 3       Replicas: 3     Isr: 3
+```
+
+表示 `test1` 主题的第一个分区在 `node-3` 节点（即Kafka启动的服务）上面只有一个 `leader副本`
+
+**test2 主题创建两个分区，两个副本**
+
+```tex
+Topic: test2    TopicId: gSPHd1iuQS-3QgZpug22yg PartitionCount: 2       ReplicationFactor: 2    Configs:
+        Topic: test2    Partition: 0    Leader: 3       Replicas: 3,1   Isr: 3,1
+        Topic: test2    Partition: 1    Leader: 1       Replicas: 1,2   Isr: 1,2
+```
+
+表示 `test2` 主题的第一个分区在 `node-3` 节点（即Kafka启动的服务）上面有一个 `leader副本`，在 `node-1` 节点上有一个 `follower副本`
+
+`test2` 主题的第二个分区在 `node-1` 节点（即Kafka启动的服务）上面有一个 `leader副本`，在 `node-2` 节点上有一个 `follower副本`
+
+## 六、生产者
+
+### 6.1 自定义拦截器
+
+1. 编写自定义拦截器
+
+   ```java
+   /**
+    * 自定义拦截器
+    *
+    *  1.实现ProducerInterceptor接口
+    *  2.定义泛型
+    *  3.重写方法
+    *
+    * @author elonlo
+    * @date 2024/6/30 18:07
+    */
+   public class CustomProducerInterceptor implements ProducerInterceptor<String, String> {
+   
+   	// 发送生产者数据时会调用此方法
+   	@Override
+   	public ProducerRecord<String, String> onSend(ProducerRecord<String, String> record) {
+   		return new ProducerRecord<>(record.topic(), record.key(), record.value() + "china");
+   	}
+   
+   	// 发送数据完毕,服务器返回的响应会调用此方法
+   	@Override
+   	public void onAcknowledgement(RecordMetadata metadata, Exception exception) {
+   
+   	}
+   
+   	// 生产者对象关闭的时候,会调用此方法
+   	@Override
+   	public void close() {
+   
+   	}
+   
+   	// 创建生产者对象的时候调用
+   	@Override
+   	public void configure(Map<String, ?> configs) {
+   
+   	}
+   }
+   ```
+
+2. 配置自定义拦截器
+
+   ```java
+   // 1、创建配置对象
+   Map<String, Object> configMap = new HashMap<>(4);
+   configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   
+   // 2、对生产者对象数据k,v序列化
+   configMap.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+   configMap.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+   configMap.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG, CustomProducerInterceptor.class.getName());
+   
+   // 3、创建生产者对象
+   KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+   ```
+
+### 6.2 自定义分区策略
+
+1. 编写自定义分区策略
+
+   ```java
+   /**
+    * 自定义分区策略
+    *
+    * @author elonlo
+    * @date 2024/6/30 19:32
+    */
+   public class CustomKafkaPartitioner implements Partitioner {
+   
+   	// 重写分区策略
+   	@Override
+   	public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster) {
+   		return 1;
+   	}
+   
+   	@Override
+   	public void close() {
+   
+   	}
+   
+   	@Override
+   	public void configure(Map<String, ?> configs) {
+   
+   	}
+   }
+   ```
+
+2. 配置自定义分区策略
+
+   ```java
+   // 1、创建配置对象
+   Map<String, Object> configMap = new HashMap<>(4);
+   configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   
+   // 2、对生产者对象数据k,v序列化
+   configMap.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+   configMap.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+   configMap.put(ProducerConfig.PARTITIONER_CLASS_CONFIG, CustomKafkaPartitioner.class.getName());
+   
+   // 3、创建生产者对象
+   KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+   ```
+
+注意：默认情况下不需要配置分区策略，`Kafka` 内部有自己的分区策略，`Kafka` 底层不会校验分区是否存在，所以自定义分区时如果计算出来的**分区编号不存在**将导致生产者一直**阻塞**。
+
+### 6.3 同步/异步发送数据
+
+1. 异步（默认）
+
+   ```java
+   // 3、创建生产者对象
+   KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+   
+   for (int i = 0; i < 10; i++) {
+       // 4、创建数据
+       // 构建数据时需要传递三个参数, 1: 主题 2: 消息key 3: 消息value
+       ProducerRecord<String, String> record = new ProducerRecord<>(
+               TOPIC, MESSAGE_KEY + i, MESSAGE_VALUE + i
+       );
+   
+       // 5、发送数据   异步
+       producer.send(record, (metadata, exception) -> System.out.println("发送数据: " + metadata));
+       System.out.println("发送数据");
+   }
+   ```
+
+   ```tex
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据
+   发送数据: test2-1@41
+   发送数据: test2-1@42
+   发送数据: test2-1@43
+   发送数据: test2-1@44
+   发送数据: test2-1@45
+   发送数据: test2-1@46
+   发送数据: test2-1@47
+   发送数据: test2-1@48
+   发送数据: test2-1@49
+   发送数据: test2-1@50
+   ```
+
+2. 同步
+
+   ```java
+   // 3、创建生产者对象
+   KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+   
+   for (int i = 0; i < 10; i++) {
+       // 4、创建数据
+       // 构建数据时需要传递三个参数, 1: 主题 2: 消息key 3: 消息value
+       ProducerRecord<String, String> record = new ProducerRecord<>(
+               TOPIC, MESSAGE_KEY + i, MESSAGE_VALUE + i
+       );
+   
+       // 5、发送数据   同步
+       Future<RecordMetadata> future = producer.send(record, (metadata, exception) -> System.out.println("发送数据: " + metadata));
+       System.out.println("发送数据");
+       try {
+           future.get();
+       } catch (InterruptedException | ExecutionException e) {
+           e.printStackTrace();
+       }
+   }
+   ```
+
+   ```tex
+   发送数据
+   发送数据: test2-1@61
+   发送数据
+   发送数据: test2-1@62
+   发送数据
+   发送数据: test2-1@63
+   发送数据
+   发送数据: test2-1@64
+   发送数据
+   发送数据: test2-1@65
+   发送数据
+   发送数据: test2-1@66
+   发送数据
+   发送数据: test2-1@67
+   发送数据
+   发送数据: test2-1@68
+   发送数据
+   发送数据: test2-1@69
+   发送数据
+   发送数据: test2-1@70
+   ```
+
+### 6.4 消息接收应答处理
+
+Kafka 的消息应答处理可以通过配置 `acks参数` 实现不同的处理效果。`acks参数` 有以下几种设置：
+
+- acks=0：如果设置为零，生产者将完全不等待服务器的任何确认。记录将被**立即添加**到套接字**缓冲区**，并视为**已发送**。在这种情况下，**不能保证**服务器已收到记录，重试配置也**不会生效**（因为**客户端通常不会知道任何失败**）。
+- acks=1：`leader` 会将记录写入其**本地日志**，但不会等待所有 `follower` 的**完整确认**就做出响应。在这种情况下，如果 `leader` 在确认记录后，但在 `follower` 复制记录之前立即发生故障，那么记录就会丢失。
+- acks=all（默认）：这意味着 `leader`  将**等待全部同步复制**来确认记录。这保证了只要至少有一个同步副本还活着，记录就不会丢失。这是最强的可用保证。等同于 `acks=-1` 设置。
+
+```java
+// 1、创建配置对象
+Map<String, Object> configMap = new HashMap<>(4);
+configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+
+// 2、对生产者对象数据k,v序列化
+configMap.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+configMap.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+configMap.put(ProducerConfig.ACKS_CONFIG, "0");
+
+// 3、创建生产者对象
+KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+```
+
+### 6.5 幂等性
+
+`Kafka` 在保证数据一致性的情况下引入了数据重试机制，但是引入之后又带来了另外一个问题，在某些情况下可能会导致数据重复，于是 Kafka 采用幂等性的操作解决这个问题，下面是幂等性的一些配置：
+
+```java
+// 1、创建配置对象
+Map<String, Object> configMap = new HashMap<>(4);
+configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+
+// 2、对生产者对象数据k,v序列化
+configMap.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+configMap.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+// 使用默认配置
+configMap.put(ProducerConfig.ACKS_CONFIG, "-1");
+// 开启幂等性,默认为false
+configMap.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+// 设置重试次数,默认为0,不重试
+configMap.put(ProducerConfig.RETRIES_CONFIG, 5);
+// 在途请求缓冲区,默认值5
+configMap.put(ProducerConfig.BATCH_SIZE_CONFIG, 5);
+// 设置超时时间,默认为30s
+configMap.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000);
+```
+
+幂等性操作的要求如下：
+
+- ACKS=-1
+- 开启重试机制
+- 在途请求缓冲区的数据不能大于5
+
+注意：幂等性只能保证一个分区的幂等性，不同分区的幂等性无法保证
+
+### 6.6 事务
+
+`Kafka` 可以使用事务保证不同会话间的幂等性。具体配置如下：
+
+```java
+/**
+ * Kafka事务
+ *
+ * @author elonlo
+ * @date 2024/6/30 00:04
+ */
+public class KafkaProducerTransactionTest {
+
+	/**
+	 * kafka服务地址
+	 */
+	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+
+	/**
+	 * kafka主题
+	 */
+	private static final String TOPIC = "test2";
+
+	/**
+	 * kafka消息key
+	 */
+	private static final String MESSAGE_KEY = "key";
+
+	/**
+	 * kafka消息value
+	 */
+	private static final String MESSAGE_VALUE = "value";
+
+	public static void main(String[] args) {
+
+		// 1、创建配置对象
+		Map<String, Object> configMap = new HashMap<>(4);
+		configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+
+		// 2、对生产者对象数据k,v序列化
+		configMap.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+		configMap.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+		// 使用默认配置
+		configMap.put(ProducerConfig.ACKS_CONFIG, "-1");
+		// 开启幂等性,默认为false
+		configMap.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+		// 设置重试次数,默认为0,不重试
+		configMap.put(ProducerConfig.RETRIES_CONFIG, 5);
+		// 在途请求缓冲区,默认值5
+		configMap.put(ProducerConfig.BATCH_SIZE_CONFIG, 5);
+		// 设置超时时间,默认为30s
+		configMap.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000);
+		// 设置事务id,必须开启幂等性
+		configMap.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "my-tx-id");
+
+		// 3、创建生产者对象
+		KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+
+		// 初始化事务
+		producer.initTransactions();
+
+		try {
+			// 开启事务
+			producer.beginTransaction();
+			for (int i = 0; i < 20; i++) {
+				// 4、创建数据
+				// 构建数据时需要传递三个参数, 1: 主题 2: 消息key 3: 消息value
+				ProducerRecord<String, String> record = new ProducerRecord<>(
+						TOPIC, MESSAGE_KEY + i, MESSAGE_VALUE + i
+				);
+
+				// 5、发送数据
+				Future<RecordMetadata> future = producer.send(record);
+			}
+
+			// 提交事务
+			producer.commitTransaction();
+		} catch (Exception e) {
+			e.printStackTrace();
+			// 中止事务
+			producer.abortTransaction();
+		} finally {
+			// 6、关闭生产者对象
+			producer.close();
+		}
+	}
+}
+```
+
 
 
