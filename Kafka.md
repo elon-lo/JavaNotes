@@ -797,9 +797,39 @@ configMap.put(ProducerConfig.ACKS_CONFIG, "0");
 KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
 ```
 
-### 6.5 幂等性
+### 6.5 重试机制
 
-`Kafka` 在保证数据一致性的情况下引入了数据重试机制，但是引入之后又带来了另外一个问题，在某些情况下可能会导致数据重复，于是 Kafka 采用幂等性的操作解决这个问题，下面是幂等性的一些配置：
+`Kafka` 在保证数据一致性的情况下引入了数据重试机制，但是引入之后又带来了另外一个问题，在某些情况下可能会导致**数据重复**和**数据乱序**问题。
+
+**数据重复**
+
+1. 消息应答处理设置为 acks=1
+2. 数据发送给 Broker 中的 Leader，Leader 接收到数据之后将数据写入磁盘中
+3. Leader 响应接收到数据的信息给 Producer，但是此时网络出现波动导致响应失败
+4. Producer 未收到响应信息，认为未发送成功，于是又将数据从 Buffer 中重新发送
+5. 重新发送之后就导致数据重复了
+
+![image-20240702181223487](https://image.elonlo.top/img/2024/07/02/6683d28f8335b.png)
+
+**数据乱序**
+
+1. 当前缓冲区有三条数据 data1、data2、data3，`NetworkClient` 从缓冲区取到这三条数据
+2. `NetworkClient` 将这三条数据发送给 `Broker`，由于生产者可以同时处理 5 个请求，所以三条数据可以同时被处理
+3. 由于出现网络等相关问题，data2、data3 发送并响应成功，但是 data1 响应失败了
+4. 于是 `NetworkClient` 重新发送 data1 数据，但是此时发送之后 data1 的数据就在 data2、data3之后了
+
+![image-20240702183345878](https://image.elonlo.top/img/2024/07/02/6683d78bcdfd4.png)
+
+### 6.6 幂等性
+
+Kafka 引入了幂等生产者的概念，这是 Kafka 从 0.11.0 版本开始提供的一项特性。幂等生产者确保同一个消息即使被发送多次，最终也只会在目标 topic 中存储一次。
+
+**关键机制**：
+
+- **Producer ID（PID）**：每个生产者在初始化时被分配一个唯一的 PID。
+- **序列号（Sequence Number）**：生产者在每个分区的每个消息上附加一个单调递增的序列号。
+
+当 Kafka broker 接收到消息时，它会检查消息的 PID 和序列号。如果消息的序列号高于当前已记录的序列号，则消息会被写入日志；否则，消息会被视为重复并被忽略。
 
 ```java
 // 1、创建配置对象
@@ -829,9 +859,14 @@ configMap.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000);
 
 注意：幂等性只能保证一个分区的幂等性，不同分区的幂等性无法保证
 
-### 6.6 事务
+### 6.7 事务
 
-`Kafka` 可以使用事务保证不同会话间的幂等性。具体配置如下：
+为了确保消息的端到端幂等性，即在生产者、Kafka broker 和消费者之间的一致性，Kafka 提供了事务性消息特性。事务性消息确保生产者可以在一个事务中发送多个消息，要么全部成功，要么全部失败。
+
+**关键机制：**
+
+- **事务 ID（Transaction ID）**：生产者在初始化时指定一个唯一的事务 ID。
+- **事务日志（Transaction Log）**：Kafka broker 记录事务的开始和结束状态。
 
 ```java
 /**
@@ -918,5 +953,10 @@ public class KafkaProducerTransactionTest {
 }
 ```
 
+事务流程如下：
 
+![image-20240702231901802](https://image.elonlo.top/img/2024/07/02/66841a665338e.png)
 
+### 6.8 数据存储
+
+Kafka 中的数据是存在 .log 文件中的，producer 将当前数据写入 leader副本时，leader副本 并不会立即将数据写入磁盘中，而是先将数据写入内存中，达到设置的参数值之后由logmanager将数据从内存刷写到磁盘中，
