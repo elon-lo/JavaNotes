@@ -959,4 +959,69 @@ public class KafkaProducerTransactionTest {
 
 ### 6.8 数据存储
 
-Kafka 中的数据是存在 .log 文件中的，producer 将当前数据写入 leader副本时，leader副本 并不会立即将数据写入磁盘中，而是先将数据写入内存中，达到设置的参数值之后由logmanager将数据从内存刷写到磁盘中，
+**数据存储文件类型**
+
+Kafka 的分区目录下有三个类型的文件：
+
+- **.log：**数据的日志文件，20位长度的数字字符串，数字的含义就是当前日志文件的起始偏移量
+- **.index：**偏移量的索引文件，将偏移量与当前文件中的数据具体物理位置做一个关联，保存到索引文件中，可以按照偏移量的方式对数据在当前文件中进行定位
+- **.timeindex：**时间索引文件，用于保存数据时间戳和数据偏移量的关系，便于按照时间的方式来读取数据
+
+Kafka 中的数据是**存储在 .log 文件**中的，producer 将当前数据写入 leader 副本时，leader 副本并**不会立即将数据写入磁盘**中，而是先**将数据写入内存**中，由 **LogManager** **周期性的**将数据从内存刷写到磁盘中。
+
+| 参数名                          | 含义                                                         |
+| ------------------------------- | ------------------------------------------------------------ |
+| log.flush.interval.messages     | 将信息刷新到磁盘之前，日志分区上累积的信息数量。默认值：9223372036854775807（long类型的最大值） |
+| log.flush.interval.ms           | 任何主题中的消息在刷新到磁盘之前在内存中保留的最长时间（毫秒）。如果未设置，则使用 log.flush.scheduler.interval.ms 中的值。默认值：null |
+| log.flush.scheduler.interval.ms | 日志刷新程序检查是否有日志需要刷新到磁盘的频率，以毫秒为单位，默认值：9223372036854775807（long类型的最大值） |
+| log.segment.bytes               | 单个日志文件的最大大小。默认值：1GB，最小值必须大于14，单位比特 |
+| log.roll.ms                     | 滚动新日志段之前的最长时间（毫秒）。如果未设置，则使用 log.roll.hours 中的值。默认值：null |
+| log.roll.hours                  | 产生新日志段之前的最长时间（小时），次于 log.roll.ms 属性。默认值：168小时（7天） |
+| log.index.interval.bytes        | 数据在写入文件的时候达到 4k 才会向 index 文件中写数据。默认值：4k |
+
+日志文件写入磁盘配置案例如下：
+
+- 修改 Kafka `server.properties` 文件中的配置
+
+  ```properties
+  # 将数据从内存刷写进磁盘的日志累积数量
+  log.flush.interval.messages=1
+  # 单个日志文件的最大大小
+  log.segment.bytes=200
+  # 日志滚动生成的最长时间
+  log.roll.ms=5
+  ```
+
+- 配置多个批次，产生多个小文件
+
+  ```java
+  // 配置产生多个批次数据
+  configMap.put(ProducerConfig.BATCH_SIZE_CONFIG, 2);
+  ```
+
+- 使用工具查看 .log 文件中的内容，在 Kafka 根目录下执行以下命令
+
+  ```bash
+  bin\windows\kafka-run-class.bat kafka.tools.DumpLogSegments --files D:/Home/kafka/data/kafka/test-0/00000000000000000000.log --print-data-log
+  ```
+
+  ```tex
+  Dumping D:\Home\kafka\data\kafka\test-0\00000000000000000000.log
+  Log starting offset: 0
+  baseOffset: 0 lastOffset: 1 count: 2 baseSequence: 0 lastSequence: 1 producerId: 0 producerEpoch: 0 partitionLeaderEpoch: 0 isTransactional: false isControl: false deleteHorizonMs: OptionalLong.empty position: 0 CreateTime: 1720015067577 size: 95 magic: 2 compresscodec: none crc: 654334578 isvalid: true
+  | offset: 0 CreateTime: 1720015067567 keySize: 4 valueSize: 6 sequence: 0 headerKeys: [] key: key0 payload: value0
+  | offset: 1 CreateTime: 1720015067577 keySize: 4 valueSize: 6 sequence: 1 headerKeys: [] key: key1 payload: value1
+  baseOffset: 2 lastOffset: 3 count: 2 baseSequence: 2 lastSequence: 3 producerId: 0 producerEpoch: 0 partitionLeaderEpoch: 0 isTransactional: false isControl: false deleteHorizonMs: OptionalLong.empty position: 95 CreateTime: 1720015067577 size: 95 magic: 2 compresscodec: none crc: 1945938213 isvalid: true
+  | offset: 2 CreateTime: 1720015067577 keySize: 4 valueSize: 6 sequence: 2 headerKeys: [] key: key2 payload: value2
+  | offset: 3 CreateTime: 1720015067577 keySize: 4 valueSize: 6 sequence: 3 headerKeys: [] key: key3 payload: value3
+  ```
+
+**数据存储流程**
+
+1. Kafka 生产者发送生产数据的请求
+2. Broker 通过 produce 标记后被 KafkaApis 组件的应用处理接口接收到
+3. 应用处理接口将请求转发给 ReplicaManager（副本管理器），副本管理器会追加数据
+4. 副本管理器将数据追加给 Partition 的 Leader 副本
+5. Partition 将数据追加到 UnifiedLog 中，同时判断写入的数据文件是否重复
+6. UnifiedLog 将数据追加到 LogSegment（包含.log、.index、.timeindex文件），然后写入到本地磁盘文件中
+
