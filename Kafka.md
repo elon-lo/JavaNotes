@@ -957,9 +957,9 @@ public class KafkaProducerTransactionTest {
 
 ![image-20240702231901802](https://image.elonlo.top/img/2024/07/02/66841a665338e.png)
 
-### 6.8 数据存储
+## 七、数据存储
 
-**数据存储文件类型**
+### 7.1 数据存储文件类型
 
 Kafka 的分区目录下有三个类型的文件：
 
@@ -1016,7 +1016,7 @@ Kafka 中的数据是**存储在 .log 文件**中的，producer 将当前数据�
   | offset: 3 CreateTime: 1720015067577 keySize: 4 valueSize: 6 sequence: 3 headerKeys: [] key: key3 payload: value3
   ```
 
-**数据存储流程**
+### 7.2 数据存储流程
 
 1. Kafka 生产者发送生产数据的请求
 2. Broker 通过 produce 标记后被 KafkaApis 组件的应用处理接口接收到
@@ -1024,4 +1024,31 @@ Kafka 中的数据是**存储在 .log 文件**中的，producer 将当前数据�
 4. 副本管理器将数据追加给 Partition 的 Leader 副本
 5. Partition 将数据追加到 UnifiedLog 中，同时判断写入的数据文件是否重复
 6. UnifiedLog 将数据追加到 LogSegment（包含.log、.index、.timeindex文件），然后写入到本地磁盘文件中
+
+### 7.3 日志清理策略
+
+Kafka 软件的本质是用于传输数据，而不是存储数据，但是为了均衡生产数据速率和消费者的消费速率，所以可以将数据保存到日志文件中进行存储。默认的数据日志保存时间为 7 天，可以通过调整如下参数修改保存时间：
+
+- log.retention.hours：小时（默认值：7，最低优先级）
+- log.retention.minutes：分钟
+- log.retention.ms：毫秒（最高优先级）
+- log.retention.check.interval.ms：检查周期（默认值：5 分钟）
+
+日志一旦超过了设置的时间，Kafka 中提供了两种日志清理策略：delete 和 compact。
+
+1. delete（将过期数据删除）
+
+   - log.cleanup.policy ：默认值：delete，所有数据启用删除策略
+     - 基于时间：默认打开。以 segment 中所有记录中的最大时间戳作为该文件时间戳
+     - 基于大小：默认关闭。超过设置的所有日志总大小，删除最早的 segment。log.retentions.bytes，默认等于 -1，表示无穷大。
+
+2. compact（日志压缩）
+
+   基本思路就是将相同 key 的数据只保留最后一个。
+
+   - log.cleanup.policy：compact，所有数据启用压缩策略。
+
+## 八、消费者
+
+
 
