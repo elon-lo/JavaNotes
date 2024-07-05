@@ -1050,5 +1050,146 @@ Kafka 软件的本质是用于传输数据，而不是存储数据，但是为�
 
 ## 八、消费者
 
+### 8.1 偏移量
 
+Kafka 消费数据是根据偏移量来消费的，如果 Kafka 中没有初始偏移量，或者服务器上不再存在当前偏移量（例如，因为数据已被删除），该怎么办？下面是 Kafka 几种常见的偏移量设置：
 
+- **earliest：**自动将偏移量重置为最早的偏移量
+- **latest：**默认值，自动将偏移量重置为最新偏移量
+- **none：**如果没有找到消费者组的先前偏移量，则向消费者抛出异常
+- **anything else：**向用户抛出异常。
+
+**earliest**（从最早偏移量获取数据）
+
+```java
+// 设置偏移量,earliest: 最早,latest: 最新
+configMap.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+```
+
+```tex
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 0, CreateTime = 1720183657629, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key0, value = value0)
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 1, CreateTime = 1720183657638, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key1, value = value1)
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 2, CreateTime = 1720183657638, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key2, value = value2)
+```
+
+**latest**（从最新偏移量获取数据）
+
+```java
+// 设置偏移量,earliest: 最早,latest: 最新
+configMap.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+```
+
+```tex
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 3, CreateTime = 1720184668974, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key3, value = value3)
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 4, CreateTime = 1720184668983, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key4, value = value4)
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 5, CreateTime = 1720184668983, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key5, value = value5)
+```
+
+**从指定偏移量位置获取数据**
+
+```java
+// 1、消费者配置
+Map<String, Object> configMap = new HashMap<>(4);
+configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+
+// 2、消费者数据反序列化
+configMap.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+configMap.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+
+// 3、配置组
+configMap.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP);
+
+// 4、创建消费者对象
+KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configMap);
+
+// 5、订阅主题
+consumer.subscribe(Collections.singletonList(TOPIC));
+
+// 获取集群信息
+boolean flag = true;
+while (flag) {
+    consumer.poll(Duration.ofMillis(100));
+    // 获取当前消费主题的分区信息
+    final Set<TopicPartition> assignment = consumer.assignment();
+    if (null == assignment || assignment.isEmpty()) {
+        continue;
+    }
+    for (TopicPartition topicPartition : assignment) {
+        if (TOPIC.equals(topicPartition.topic())) {
+            // 设置从指定偏移量位置消费数据
+            consumer.seek(topicPartition, 3);
+            flag = false;
+        }
+    }
+}
+
+while (true) {
+    try {
+        // 6、从主题中拉取数据
+        final ConsumerRecords<String, String> datas = consumer.poll(Duration.ofMillis(100));
+        for (ConsumerRecord<String, String> record : datas) {
+            System.out.println(record);
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+        return;
+    }
+}
+```
+
+```tex
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 3, CreateTime = 1720185017771, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key3, value = value3)
+ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 4, CreateTime = 1720185017771, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key4, value = value4)
+```
+
+### 8.2 数据重复消费
+
+由于 Kafka 中的偏移量默认是自动提交的，当消费者重启之后可能存在数据重复消费的情况，于是可以通过**关闭自动提交**，使用**手动保存偏移量**的方式解决该问题。下面是两种常见的解决方案
+
+#### 8.2.1 同步提交
+
+```java
+// 关闭自动提交
+configMap.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+
+while (true) {
+    try {
+        // 6、从主题中拉取数据
+        final ConsumerRecords<String, String> datas = consumer.poll(Duration.ofMillis(100));
+        for (ConsumerRecord<String, String> record : datas) {
+            System.out.println(record);
+        }
+
+        // 手动保存偏移量,同步提交,会阻塞当前线程等待提交结果，提交失败会一直重试
+        consumer.commitSync();
+    } catch (Exception e) {
+        e.printStackTrace();
+        return;
+    }
+}
+```
+
+#### 8.2.2 异步提交
+
+```java
+// 关闭自动提交
+configMap.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+
+while (true) {
+    try {
+        // 6、从主题中拉取数据
+        final ConsumerRecords<String, String> datas = consumer.poll(Duration.ofMillis(100));
+        for (ConsumerRecord<String, String> record : datas) {
+            System.out.println(record);
+        }
+
+        // 手动保存偏移量,异步提交
+        consumer.commitAsync();
+    } catch (Exception e) {
+        e.printStackTrace();
+        return;
+    }
+}
+```
+
+注意：手动提交偏移量虽然可以解决数据重复消费的问题，但是可能会出现漏消费数据的问题。
