@@ -1050,7 +1050,7 @@ Kafka 软件的本质是用于传输数据，而不是存储数据，但是为�
 
 ## 八、消费者
 
-### 8.1 偏移量
+### 8.1 自动提交偏移量
 
 Kafka 消费数据是根据偏移量来消费的，如果 Kafka 中没有初始偏移量，或者服务器上不再存在当前偏移量（例如，因为数据已被删除），该怎么办？下面是 Kafka 几种常见的偏移量设置：
 
@@ -1142,7 +1142,7 @@ ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 3, CreateT
 ConsumerRecord(topic = test, partition = 0, leaderEpoch = 0, offset = 4, CreateTime = 1720185017771, serialized key size = 4, serialized value size = 6, headers = RecordHeaders(headers = [], isReadOnly = false), key = key4, value = value4)
 ```
 
-### 8.2 数据重复消费
+### 8.2 手动提交偏移量
 
 由于 Kafka 中的偏移量默认是自动提交的，当消费者重启之后可能存在数据重复消费的情况，于是可以通过**关闭自动提交**，使用**手动保存偏移量**的方式解决该问题。下面是两种常见的解决方案
 
@@ -1193,3 +1193,613 @@ while (true) {
 ```
 
 注意：手动提交偏移量虽然可以解决数据重复消费的问题，但是可能会出现漏消费数据的问题。
+
+### 8.3 事务的隔离级别
+
+控制如何读取以事务方式写入的消息。如果设置为 read_committed，consumer.poll() 将只返回已提交的事务消息。如果设置为 read_uncommitted（默认），consumer.poll() 将返回所有信息，甚至包括已中止的事务信息。在这两种模式下，非事务消息都将无条件返回。
+
+消息总是按偏移顺序返回。因此，在读取已提交模式下，consumer.poll() 只返回直到最后一个稳定偏移量（LSO）的报文，即小于第一个打开事务偏移量的报文。特别是在属于正在进行的事务的消息之后出现的任何消息，都将被保留，直到相关事务完成。因此，当有正在进行的交易时，已读已提交的用户将无法读到高水位标记。
+
+**read_committed**
+
+```java
+configMap.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+```
+
+**read_uncommitted**
+
+```java
+configMap.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_uncommitted");
+```
+
+### 8.4 消费者组
+
+为了提高消费数据的吞吐量，Kafka 提出了消费者组的概念，将多个消费者通过一个 `group.id` 的参数绑定起来，提高消费者的消费能力。但是**多个消费者不能消费同一个分区的数据**，反之，**一个消费者可以消费多个分区的数据**。
+
+下面是一个简单的消费者组消费数据的案例：
+
+1. 创建一个有两个分区、一个副本的 test 主题
+
+2. 生产者
+
+   ```java
+   /**
+    * Kafka生产者
+    *
+    * @author elonlo
+    * @date 2024/6/29 15:52
+    */
+   public class KafkaProducerTest {
+   
+   	/**
+   	 * kafka服务地址
+   	 */
+   	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+   
+   	/**
+   	 * kafka主题
+   	 */
+   	private static final String TOPIC = "test";
+   
+   	/**
+   	 * kafka消息key
+   	 */
+   	private static final String MESSAGE_KEY = "key";
+   
+   	/**
+   	 * kafka消息value
+   	 */
+   	private static final String MESSAGE_VALUE = "value";
+   
+   	public static void main(String[] args) {
+   
+   		// 1、创建配置对象
+   		Map<String, Object> configMap = new HashMap<>(4);
+   		configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   
+   		// 2、对生产者对象数据k,v序列化
+   		configMap.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+   		configMap.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+   
+   		// 3、创建生产者对象
+   		KafkaProducer<String, String> producer = new KafkaProducer<>(configMap);
+   
+   		for (int i = 0; i < 2000; i++) {
+   			// 4、创建数据
+   			// 构建数据时需要传递三个参数, 1: 主题 2: 消息key 3: 消息value
+   			// 分区设置,向不同的分区添加数据
+   			ProducerRecord<String, String> record = new ProducerRecord<>(
+   					TOPIC, i % 2, MESSAGE_KEY + i, MESSAGE_VALUE + i
+   			);
+   
+   			// 5、发送数据
+   			producer.send(record);
+   			try {
+   				TimeUnit.SECONDS.sleep(1);
+   			} catch (InterruptedException e) {
+   				e.printStackTrace();
+   			}
+   		}
+   
+   		// 6、关闭生产者对象
+   		producer.close();
+   	}
+   }
+   ```
+
+3. 消费者
+
+   ```java
+   /**
+    * Kafka消费者
+    *
+    * @author elonlo
+    * @date 2024/7/6 9:47
+    */
+   public class KafkaConsumerGroup1Test {
+   
+   	/**
+   	 * kafka服务地址
+   	 */
+   	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+   
+   	/**
+   	 * kafka主题
+   	 */
+   	private static final String TOPIC = "test";
+   
+   	/**
+   	 * 组
+   	 */
+   	private static final String GROUP = "elonlo";
+   
+   	public static void main(String[] args) {
+   
+   		// 1、消费者配置
+   		Map<String, Object> configMap = new HashMap<>(4);
+   		configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   
+   		// 2、消费者数据反序列化
+   		configMap.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+   		configMap.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+   
+   		// 3、配置组
+   		configMap.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP);
+   
+   		// 4、创建消费者对象
+   		KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configMap);
+   
+   		// 5、订阅主题
+   		consumer.subscribe(Collections.singletonList(TOPIC));
+   
+   		while (true) {
+   			try {
+   				// 6、从主题中拉取数据
+   				final ConsumerRecords<String, String> datas = consumer.poll(Duration.ofMillis(100));
+   				for (ConsumerRecord<String, String> record : datas) {
+   					System.out.println(record.partition());
+   				}
+   			} catch (Exception e) {
+   				e.printStackTrace();
+   				return;
+   			}
+   		}
+   	}
+   }
+   ```
+
+   ```java
+   /**
+    * Kafka消费者
+    *
+    * @author elonlo
+    * @date 2024/7/6 9:47
+    */
+   public class KafkaConsumerGroup2Test {
+   
+   	/**
+   	 * kafka服务地址
+   	 */
+   	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+   
+   	/**
+   	 * kafka主题
+   	 */
+   	private static final String TOPIC = "test";
+   
+   	/**
+   	 * 组
+   	 */
+   	private static final String GROUP = "elonlo";
+   
+   	public static void main(String[] args) {
+   
+   		// 1、消费者配置
+   		Map<String, Object> configMap = new HashMap<>(4);
+   		configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   
+   		// 2、消费者数据反序列化
+   		configMap.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+   		configMap.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+   
+   		// 3、配置组
+   		configMap.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP);
+   
+   		// 4、创建消费者对象
+   		KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configMap);
+   
+   		// 5、订阅主题
+   		consumer.subscribe(Collections.singletonList(TOPIC));
+   
+   		while (true) {
+   			try {
+   				// 6、从主题中拉取数据
+   				final ConsumerRecords<String, String> datas = consumer.poll(Duration.ofMillis(100));
+   				for (ConsumerRecord<String, String> record : datas) {
+   					System.out.println(record.partition());
+   				}
+   			} catch (Exception e) {
+   				e.printStackTrace();
+   				return;
+   			}
+   		}
+   	}
+   }
+   ```
+
+   ```java
+   /**
+    * Kafka消费者
+    *
+    * @author elonlo
+    * @date 2024/7/6 9:47
+    */
+   public class KafkaConsumerGroup3Test {
+   
+   	/**
+   	 * kafka服务地址
+   	 */
+   	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+   
+   	/**
+   	 * kafka主题
+   	 */
+   	private static final String TOPIC = "test";
+   
+   	/**
+   	 * 组
+   	 */
+   	private static final String GROUP = "elonlo";
+   
+   	public static void main(String[] args) {
+   
+   		// 1、消费者配置
+   		Map<String, Object> configMap = new HashMap<>(4);
+   		configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   
+   		// 2、消费者数据反序列化
+   		configMap.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+   		configMap.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+   
+   		// 3、配置组
+   		configMap.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP);
+   
+   		// 4、创建消费者对象
+   		KafkaConsumer<String, String> consumer = new KafkaConsumer<>(configMap);
+   
+   		// 5、订阅主题
+   		consumer.subscribe(Collections.singletonList(TOPIC));
+   
+   		while (true) {
+   			try {
+   				// 6、从主题中拉取数据
+   				final ConsumerRecords<String, String> datas = consumer.poll(Duration.ofMillis(100));
+   				for (ConsumerRecord<String, String> record : datas) {
+   					System.out.println(record.partition());
+   				}
+   			} catch (Exception e) {
+   				e.printStackTrace();
+   				return;
+   			}
+   		}
+   	}
+   }
+   ```
+
+4. 依次启动 KafkaConsumerGroup1Test、KafkaConsumerGroup2Test、KafkaConsumerGroup3Test、KafkaProducerTest，可以看到控制台打印以下内容
+
+   **KafkaConsumerGroup1Test**
+
+   ```tex
+   1
+   1
+   1
+   1
+   ```
+
+   **KafkaConsumerGroup2Test**
+
+   ```tex
+   0
+   0
+   0
+   0
+   ```
+
+   **KafkaConsumerGroup3Test**
+
+   ```tex
+   
+   ```
+
+5. 停止并关闭 KafkaConsumerGroup1Test 后
+
+   **KafkaConsumerGroup2Test**
+
+   ```tex
+   0
+   0
+   0
+   0
+   ```
+
+   **KafkaConsumerGroup3Test**
+
+   ```tex
+   1
+   1
+   1
+   1
+   ```
+
+6. 停止并同时关闭 KafkaConsumerGroup1Test、KafkaConsumerGroup2Test 后
+
+   **KafkaConsumerGroup3Test**
+
+   ```tex
+   1
+   0
+   1
+   0
+   1
+   0
+   1
+   0
+   ```
+
+### 8.5 分区分配策略
+
+**RoundRobinAssignor（轮询分配策略）**
+
+每个消费者组中的消费者都会含有一个自动生产的 UUID 作为 memberid。轮询策略中会将每个消费者按照 memberid 进行排序，所有 memberid 消费的主题分区根据主题名称进行排序。将主题分区轮询分配给对应的订阅用户，注意未订阅当前轮询主题的消费者会跳过。
+
+**RangeAssignor（范围分配策略）**
+
+按照每个 topic 的 partition 数计算出每个消费者应该分配的分区数量，然后分配，分配的原则就是一个主题的分区尽可能的平均分配，如果不能平均分配，那就按顺序向前补齐既可。
+
+**假设有【1，2，3，4，5】5 个分区分配给 2 个消费者：**
+
+5 / 2 = 2，5 % 2 = 1 => 剩余的一个补在第一个中[2 + 1] [2] => 结果为 [1,2,3] [4,5]
+
+**假设有【1，2，3，4，5】5 个分区分配给 3 个消费者：**
+
+5 / 3 = 1，5 % 3 = 2 => 剩余的两个补在第一个和第二个中 [1 + 1] [1 + 1] [1] => 结果为 [1,2] [3,4] [5]
+
+**StickyAssignor（粘性分区策略）**
+
+在第一次分配后，每个组成员都保留分配给自己的分区信息。如果有消费者加入或退出，那么在进行分区再分配时（一般情况下，消费者退出 45s 后，才会进行再分配，因为需要考虑可能又恢复的情况），尽可能保证消费者原有的分区不变，重新对加入或退出消费者的分区进行分配。
+
+**CooperativeStickyAssignor**
+
+前面的三种分配策略在进行重新分配时使用的都是 EAGER 协议，会让当前的所有消费者放弃当前分区，关闭连接，资源清理，重新加入组和等待分配策略。明显效率是比较低的，所以从 Kafka 2.4 版本开始，在粘性分区策略的基础上，优化了重分配的过程，使用的是 COOPERATIVE 协议，特点是在整个再分配的过程中粘性分区策略分配的会更加均匀和高效一些，COOPERATIVE 协议将一次全局重平衡，改成每次小规模重平衡，直至最终收敛平衡的过程。
+
+Kafka 消费者默认的分区分配策略就是 RangeAssignor 和 CooperativeStickyAssignor
+
+### 8.6 消费者 Leader 选举
+
+![image-20240706134747313](https://image.elonlo.top/img/2024/07/06/6688da8ce0a12.png)
+
+注意：每个消费者都有可能成为 Leader，当有新的消费者加入消费者组时，消费者组会将所有的消费者移出，然后重新选举 Leader 节点。
+
+## 九、高级特性
+
+### 9.1 分布式集群脑裂
+
+**什么是集群脑裂问题？**
+
+比如有 A、B、C 三个 Broker 节点，最开始时 A 是作为整个集群的 Controller，但是 A 由于网络等原因掉线了，于是 C 成为了新的 Controller，这时 C 向 B 同步数据，同步数据的时候 A 恢复了，这时候 A 也向 B 同步数据，此时集群当中就有了两个 Controller，B 不知道具体要同步谁的数据，这就是集群的脑裂问题。
+
+**集群脑裂解决**
+
+在 Zookeeper 中创建一个 epoch 节点，这个节点的名称为 controller_epoch，默认创建时值为 0，当 controller 选举成功之后就会更新该值，将值加 1。
+
+任何节点都能够从集群中获取最新的 epoch，当集群中有多个管理者时，节点只需判断当前同步数据的 epoch 值和当前集群中最新的 epoch 是否相等，一旦同步数据的 epoch 值小于集群中最新的 epoch，节点就可以不接收同步数据的处理
+
+### 9.2 Linux 集群部署
+
+| 服务节点 | Kafka-broker-1 | Kafka-broker-2 | Kafka-broker-3 |
+| -------- | -------------- | -------------- | -------------- |
+| 服务进程 | QuorumPeerMain | QuorumPeerMain | QuorumPeerMain |
+| 服务进程 | Kafka          | Kafka          | Kafka          |
+
+#### 9.2.1 服务器集群网络配置
+
+1. 导入已创建的虚拟机 Kafka-broker-1
+
+2. 将 Kafka-broker-1 分别克隆出 Kafka-broker-2、Kafka-broker-3
+
+3. 虚拟机中修改网络，在 vmware 的编辑→虚拟网络编辑器→更改设置→VMnet8，下面的子网 IP 修改为`192.168.10.0`，NAT 设置将网络修改为 `192.168.10.2`，DHCP 设置中起始 IP 设置为 `192.168.10.100`
+
+4. 使用 root 用户分别登录三台服务器，执行以下命令将虚拟机修改为静态 IP
+
+   ```bash
+   # 修改虚拟机网络
+   vim /etc/sysconfig/network-scripts/ifcfg-ens33
+   ```
+
+   ```properties
+   # Kafka-broker-1
+   TYPE=Ethernet
+   PROXY_METHOD=none
+   BROWSER_ONLY=no
+   DEFROUTE=yes
+   IPV4_FAILURE_FATAL=no
+   IPV6INIT=yes
+   IPV6_AUTOCONF=yes
+   IPV6_DEFROUTE=yes
+   IPV6_FAILURE_FATAL=no
+   IPV6_ADDR_GEN_MODE=stable-privacy
+   NAME=ens33
+   UUID=cf96a10c-94e6-49bb-94c7-e8c8359333a7
+   DEVICE=ens33
+   
+   BOOTPROTO=static
+   ONBOOT=yes
+   IPADDR=192.168.10.101
+   NETMASK=255.255.255.0
+   GATEWAY=192.168.10.2
+   DNS1=192.168.10.2
+   DNS2=223.5.5.5
+   DNS3=119.29.29.29
+   ```
+
+   ```properties
+   # Kafka-broker-2
+   TYPE=Ethernet
+   PROXY_METHOD=none
+   BROWSER_ONLY=no
+   DEFROUTE=yes
+   IPV4_FAILURE_FATAL=no
+   IPV6INIT=yes
+   IPV6_AUTOCONF=yes
+   IPV6_DEFROUTE=yes
+   IPV6_FAILURE_FATAL=no
+   IPV6_ADDR_GEN_MODE=stable-privacy
+   NAME=ens33
+   UUID=cf96a10c-94e6-49bb-94c7-e8c8359333a7
+   DEVICE=ens33
+   
+   BOOTPROTO=static
+   ONBOOT=yes
+   IPADDR=192.168.10.102
+   NETMASK=255.255.255.0
+   GATEWAY=192.168.10.2
+   DNS1=192.168.10.2
+   DNS2=223.5.5.5
+   DNS3=119.29.29.29
+   ```
+
+   ```properties
+   # Kafka-broker-3
+   TYPE=Ethernet
+   PROXY_METHOD=none
+   BROWSER_ONLY=no
+   DEFROUTE=yes
+   IPV4_FAILURE_FATAL=no
+   IPV6INIT=yes
+   IPV6_AUTOCONF=yes
+   IPV6_DEFROUTE=yes
+   IPV6_FAILURE_FATAL=no
+   IPV6_ADDR_GEN_MODE=stable-privacy
+   NAME=ens33
+   UUID=cf96a10c-94e6-49bb-94c7-e8c8359333a7
+   DEVICE=ens33
+   
+   BOOTPROTO=static
+   ONBOOT=yes
+   IPADDR=192.168.10.103
+   NETMASK=255.255.255.0
+   GATEWAY=192.168.10.2
+   DNS1=192.168.10.2
+   DNS2=223.5.5.5
+   DNS3=119.29.29.29
+   ```
+
+5. 服务器修改主机名
+
+   ```bash
+   vim /etc/hostname
+   ```
+
+   ```tex
+   # Kafka-broker-1
+   Kafka-broker-1
+   ```
+
+   ```tex
+   # Kafka-broker-2
+   Kafka-broker-2
+   ```
+
+   ```tex
+   # Kafka-broker-3
+   Kafka-broker-3
+   ```
+
+6. 修改主机名映射，三台主机都添加以下配置
+
+   ```bash
+   vim /etc/hosts
+   ```
+
+   ```tex
+   192.168.10.101 kafka-broker-1
+   192.168.10.102 kafka-broker-2
+   192.168.10.103 kafka-broker-3
+   ```
+
+7. Windows 修改主机名，找到 `C:\Windows\System32\drivers\etc\hosts` 这个文件，添加以下内容
+
+   ```tex
+   192.168.10.101 kafka-broker-1
+   192.168.10.102 kafka-broker-2
+   192.168.10.103 kafka-broker-3
+   ```
+
+8. 添加分发脚本
+
+   ```bash
+   # 切换到root目录
+   cd /root
+   
+   # 创建 bin 目录
+   mkdir bin
+   
+   # 切换到 bin 目录
+   cd bin
+   
+   # 创建分发脚本
+   vim xsync
+   ```
+
+   ```bash
+   #!/bin/bash
+   
+   # 1.判断参数个数
+   if [ $# -lt 1 ]
+   then
+       echo Not Enough Arguement!
+       exit;
+   fi
+   
+   # 2.遍历集群所有机器
+   for host in kafka-broker-1 kafka-broker-2 kafka-broker-3
+   do
+       echo ====================  $host  ====================
+       # 3.遍历所有目录,挨个发送
+       for file in $@
+       do
+   	# 4.判断文件是否存在
+   	if [ -e $file ]
+   	then
+   	    # 5.获取父目录
+   	    padir=$(cd -P $(dirname $file); pwd)
+   	    # 6.获取当前文件的名称
+   	    fname=$(basename $file)
+   	    ssh $host "mkdir -p $pdir"
+   	    rsync -av $pdir/$fname $host:$pdir
+   	else
+   	    echo $file does not exists!
+   	fi
+       done 
+   done
+   ```
+
+   ```bash
+   # 切换到xsync脚本所在目录
+   cd /root/bin
+   
+   # 修改脚本执行权限
+   chmod 777 xsync
+   ```
+
+9. 配置 SSH 免密登录
+
+   - 生成公钥和私钥（三台服务器）
+
+     ```bash
+     ssh-keygen -t rsa
+     ```
+
+     一直回车直到执行成功，会生成两个文件 id_rsa（私钥）、id_rsa.pub（公钥）
+
+   - 将公钥拷贝到需要免密登录的目标机器上，拷贝过程中需要输入目标机器密码，三台服务器依次执行以下命令
+
+     ```bash
+     ssh-copy-id kafka-broker-1
+     ssh-copy-id kafka-broker-2
+     ssh-copy-id kafka-broker-3
+     ```
+
+   注意：如出现配置错误，直接删除 root 目录下的 `.ssh` 文件夹和 `.cache` 文件夹即可，ran'hou
+
+#### 9.2.2 Java 安装
+
+#### 9.2.3 Zookeeper 安装
+
+#### 9.2.4 Kafka 安装
+
+
+
+
+
