@@ -1749,18 +1749,18 @@ Kafka 消费者默认的分区分配策略就是 RangeAssignor 和 CooperativeSt
        # 3.遍历所有目录,挨个发送
        for file in $@
        do
-   	# 4.判断文件是否存在
-   	if [ -e $file ]
-   	then
-   	    # 5.获取父目录
-   	    padir=$(cd -P $(dirname $file); pwd)
-   	    # 6.获取当前文件的名称
-   	    fname=$(basename $file)
-   	    ssh $host "mkdir -p $pdir"
-   	    rsync -av $pdir/$fname $host:$pdir
-   	else
-   	    echo $file does not exists!
-   	fi
+           # 4.判断文件是否存在
+           if [ -e $file ]
+           then
+               # 5.获取父目录
+               pdir=$(cd -P $(dirname $file); pwd)
+               # 6.获取当前文件的名称
+               fname=$(basename $file)
+               ssh $host "mkdir -p $pdir"
+               rsync -av $pdir/$fname $host:$pdir
+           else
+               echo $file does not exists!
+           fi
        done 
    done
    ```
@@ -1791,11 +1791,171 @@ Kafka 消费者默认的分区分配策略就是 RangeAssignor 和 CooperativeSt
      ssh-copy-id kafka-broker-3
      ```
 
-   注意：如出现配置错误，直接删除 root 目录下的 `.ssh` 文件夹和 `.cache` 文件夹即可，ran'hou
+   注意：如出现配置错误，直接删除 root 目录下的 `.ssh` 文件夹和 `.cache` 文件夹即可，然后重启
 
 #### 9.2.2 Java 安装
 
+1. 卸载现有的 jdk（三台机器都要执行）
+
+   ```bash
+   rpm -qa | grep -i java | xargs -n1 sudo rpm -e --nodeps
+   ```
+
+2. 上传 jdk 压缩包 `jdk-8u231-linux-x64.tar` 至 `opt` 目录下
+
+3. jdk 压缩包解压
+
+   ```bash
+   # 切换到 /opt 目录下
+   cd /opt
+   # 解压缩至指定的目录下
+   tar -zxvf jdk-8u231-linux-x64.tar -C /usr/local
+   # 切换到 /usr/local 目录
+   cd /usr/local
+   # 目录重命名
+   mv jdk1.8.0_231/ java
+   ```
+
+4. 配置 Java 环境变量
+
+   ```bash
+   vim /etc/profile.d/my_env.sh
+   ```
+
+   ```bash
+   # JAVA_HOME
+   export JAVA_HOME=/usr/local/java
+   export PATH=$JAVA_HOME/bin:$PATH
+   export CLASSPATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar
+   ```
+
+5. 刷新环境变量配置
+
+   ```bash
+   source /etc/profile.d/my_env.sh
+   ```
+
+6. 安装测试
+
+   ```bash
+   java -version
+   ```
+
+7. 分发软件
+
+   ```bash
+   # 分发环境变量文件
+   xsync /etc/profile.d/my_env.sh
+   
+   # 分发 Java 目录
+   xsync /usr/local/java/
+   ```
+
+8. 刷新环境变量（三台机器都要执行）
+
+   ```bash
+   source /etc/profile.d/my_env.sh
+   ```
+
 #### 9.2.3 Zookeeper 安装
+
+1. 上传 zookeeper 压缩包 `apache-zookeeper-3.7.1-bin.tar.gz` 至 `opt` 目录下
+
+2. zookeeper 压缩包解压
+
+   ```bash
+   # 切换到 /opt 目录下
+   cd /opt
+   # 解压缩至指定的目录下
+   tar -zxvf apache-zookeeper-3.7.1-bin.tar.gz -C /usr/local
+   # 切换到 /usr/local 目录
+   cd /usr/local
+   # 目录重命名
+   mv apache-zookeeper-3.7.1-bin/ zookeeper
+   ```
+
+3. 配置服务器编号
+
+   ```bash
+   # 切换到 /usr/local/zookeeper 目录下
+   cd /usr/local/zookeeper
+   # 在 /usr/local/zookeeper 目录下创建 zkData
+   mkdir zkData
+   # 切换到 zkData 目录下
+   cd zkData
+   # 创建 myid 文件并写入内容
+   touch myid && echo "1" > myid
+   ```
+
+4. 重命名 `/usr/local/zookeeper/conf` 目录下的 `zoo_sample.cfg` 文件名为 `zoo.cfg`
+
+   ```bash
+   # 切换到 /usr/local/zookeeper/conf 目录下
+   cd /usr/local/zookeeper/conf
+   # 修改文件名称
+   mv zoo_sample.cfg zoo.cfg
+   # 修改文件,添加以下内容
+   vim zoo.cfg
+   ```
+
+   ```properties
+   # Kafka数据存放目录
+   dataDir=/usr/local/zookeeper/zkData
+   
+   # 集群配置
+   #############################    cluster    #############################
+   # server.A=B:C:d
+   # 
+   # A 是一个数字,表示这个是第几号服务器
+   # B 是 A 服务器的主机名
+   # C 是 A 服务器与集群中的主服务器（Leader）交换信息的端口
+   # D 是 A 服务器用于主服务器（Leader）选举的端口
+   #########################################################################
+   server.1=kafka-broker-1:2888:3888
+   server.2=kafka-broker-2:2888:3888
+   server.3=kafka-broker-3:2888:3888
+   ```
+
+5. 启动 zookeeper
+
+   ```bash
+   # 切换到 /usr/local/zookeeper 目录下
+   cd /usr/local/zookeeper
+   # 启动 zk 服务
+   bin/zkServer.sh start
+   ```
+
+6. 关闭 zookeeper
+
+   ```bash
+   # 切换到 /usr/local/zookeeper 目录下
+   cd /usr/local/zookeeper
+   # 启动 zk 服务
+   bin/zkServer.sh stop
+   ```
+
+7. 查看 zookeeper 状态
+
+   ```bash
+   # 切换到 /usr/local/zookeeper 目录下
+   cd /usr/local/zookeeper
+   # 启动 zk 服务
+   bin/zkServer.sh status
+   ```
+
+8. 分发软件
+
+   ```bash
+   # 分发 zookeeper 目录
+   xsync /usr/local/zookeeper/
+   
+   # 分别将不同服务器上 myid 的值修改为以下对应内容
+   # kafka-broker-1:1
+   # kafka-broker-2:2
+   # kafka-broker-3:3
+   ```
+
+9. 启停脚本
 
 #### 9.2.4 Kafka 安装
 
