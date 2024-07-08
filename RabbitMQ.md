@@ -3240,7 +3240,7 @@ public class ConfirmController {
       public static void main(String[] args) throws IOException, TimeoutException {
   
           ConnectionFactory factory = new ConnectionFactory();
-          factory.setHost("124.220.32.153");
+          factory.setHost("ip");
           factory.setPort(25673);
           factory.setUsername("admin");
           factory.setPassword("admin");
@@ -3250,7 +3250,7 @@ public class ConfirmController {
   
           // 声明队列
           // 设置队列优先级 默认0-255,建议设置为10,表示优先级范围为0-10
-          Map<String, Object> arguments = new HashMap<>(4);
+          Map<String, Object> arguments = new HashMap<>(4);ip
           arguments.put("x-max-priority", 10);
           channel.queueDeclare(QUEUE_NAME, false, false, false, arguments);
   
@@ -3288,7 +3288,7 @@ public class ConfirmController {
       public static void main(String[] args) throws IOException, TimeoutException {
   
           ConnectionFactory factory = new ConnectionFactory();
-          factory.setHost("124.220.32.153");
+          factory.setHost("ip");
           factory.setPort(25673);
           factory.setUsername("admin");
           factory.setPassword("admin");
