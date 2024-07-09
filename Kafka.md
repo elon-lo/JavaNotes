@@ -1957,9 +1957,350 @@ Kafka 消费者默认的分区分配策略就是 RangeAssignor 和 CooperativeSt
 
 9. 启停脚本
 
+   - 创建 zk.sh 文件并添加脚本命令
+
+     ```bash
+     # 在 kafka-broker-1 服务器上的 /root/bin 目录下创建 zk.sh 脚本
+     vim /root/bin/zk.sh
+     ```
+
+     ```bash
+     #!/bin/bash
+     
+     case $1 in
+     "start"){
+     	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+     	do
+     	echo ------------- zookeeper $i 启动 -------------
+     		ssh $i "/usr/local/zookeeper/bin/zkServer.sh start"
+     	done
+     };;
+     "stop"){
+     	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+     	do
+     	echo ------------- zookeeper $i 停止 -------------
+     		ssh $i "/usr/local/zookeeper/bin/zkServer.sh stop"
+     	done
+     };;
+     "status"){
+     	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+     	do
+     	echo ------------- zookeeper $i 状态 -------------
+     		ssh $i "/usr/local/zookeeper/bin/zkServer.sh status"
+     	done
+     };;
+     esac
+     ```
+
+   - 增加 `zk.sh` 脚本权限
+
+     ```bash
+     chmod +x /root/bin/zk.sh
+     ```
+
+   - 脚本调用方式
+
+     ```bash
+     # 启动 zk 服务
+     zk.sh start
+     # 停止 zk 服务
+     zk.sh stop
+     # 查看 zk 状态
+     zk.sh status
+     ```
+
+10. 客户端工具安装
+
+    - 软件名称：prettyZoo
+    - 项目地址：https://github.com/vran-dev/PrettyZoo
+
 #### 9.2.4 Kafka 安装
 
+1. 上传文件并解压重命名
 
+   ```bash
+   # 解压缩文件到指定目录
+   tar -zxvf kafka_2.12-3.6.1.tgz -C /usr/local
+   
+   # 切换到 /usr/local 目录下
+   cd /usr/local
+   
+   # 重命名文件目录
+   mv kafka_2.12-3.6.1/ kafka
+   ```
+
+2. 修改配置文件
+
+   - 切换到配置文件目录下
+
+     ```bash
+     cd /usr/local/kafka/config
+     ```
+
+   - 修改配置文件
+
+     ```bash
+     vim server.properties
+     ```
+
+   - 追加以下内容
+
+     ```properties
+     # broker 的全局唯一编号,每个服务节点不能重复,只能是数字
+     broker.id=1
+     
+     # broker 对外暴露的 ip 和端口（每个节点单独配置）
+     advertised.listeners=PLAINTEXT://kafka-broker-1:9092
+     
+     # 处理网络请求的线程数量
+     num.network.threads=3
+     
+     # 用来处理磁盘 IO 的线程数量
+     num.io.threads=8
+     
+     # 发送套接字的缓冲区大小
+     socket.send.buffer.bytes=102400
+     
+     # 接收套接字的缓冲区大小 
+     socket.receive.buffer.bytes=102400
+     
+     # 请求套接字的缓冲区大小 
+     socket.request.max.bytes=104857600
+     
+     # kafka 运行日志（数据）存放的路径,可以配置多个路径,路径与路径之间使用逗号隔开
+     log.dirs=/usr/local/kafka/datas
+     
+     # topic 在当前 broker 上的分区个数
+     num.partitions=1
+     
+     # 用来恢复和清理 data 下数据的线程数量
+     num.recovery.threads.per.data.dir=1
+     
+     # 每个 topic 创建时的副本数,默认是 1 个副本
+     offsets.topic.replication.factor=1
+     
+     # segment 文件保留的最长时间,超时将被删除
+     log.retention.hours=168
+     
+     # 每个 segment 文件的大小,默认为 1G
+     log.segment.bytes=1073741824
+     
+     # 检查过期数据的时间,默认 5 分钟检查一次是否数据过期
+     log.retention.check.interval.ms=300000
+     
+     # 配置连接 zookeeper 集群地址（建议在 zk 根目录下创建 /kafka,方便管理）
+     zookeeper.connect=kafka-broker-1:2181,kafka-broker-2:2181,kafka-broker-3:2181/kafka
+     ```
+
+   - 防火墙放行端口
+
+     ```bash
+     firewall-cmd --zone=public --add-port=2181/tcp --permanent
+     firewall-cmd --zone=public --add-port=2888/tcp --permanent
+     firewall-cmd --zone=public --add-port=3888/tcp --permanent
+     firewall-cmd --zone=public --add-port=9092/tcp --permanent
+     ```
+
+   - 刷新防火墙配置
+
+     ```bash
+     firewall-cmd --reload
+     ```
+
+3. 分发 Kafka 软件
+
+   ```bash
+   # 切换到 /usr/local/kafka 目录下
+   cd /usr/local/kafka
+   
+   # 执行分发指令 
+   xsync kafka
+   
+   # 依次配置三台服务器上的 server.properties
+   vim /usr/local/kafka/config/server.properties
+   # broker.id=1（kafka-broker-1）
+   # advertised.listeners=PLAINTEXT://kafka-broker-1:9092（kafka-broker-1）
+   
+   # broker.id=2（kafka-broker-2）
+   # advertised.listeners=PLAINTEXT://kafka-broker-2:9092（kafka-broker-2）
+   
+   # broker.id=3（kafka-broker-3）
+   # advertised.listeners=PLAINTEXT://kafka-broker-3:9092（kafka-broker-3）
+   ```
+
+4. 配置环境变量
+
+   ```bash
+   # 环境变量追加 Kafka 配置
+   vim /etc/profile.d/my_env.sh
+   ```
+
+   ```properties
+   # KAFKA_HOME
+   export KAFKA_HOME=/usr/local/kafka
+   export PATH=$PATH:$KAFKA_HOME/bin
+   ```
+
+   ```bash
+   # 让环境变量生效
+   source /etc/profile.d/my_env.sh
+   ```
+
+5. 分发配置文件
+
+   ```bash
+   xsync /etc/profile.d/my_env.sh
+   ```
+
+6. 刷新环境变量（三台服务器都要执行）
+
+   ```bash
+   source /etc/profile.d/my_env.sh
+   ```
+
+7. 启动 Kafka 
+
+   - 启动 zookeeper 服务
+
+     ```bash
+     /usr/local/zookeeper/bin/zkServer.sh start
+     ```
+
+   - 启动 Kafka
+
+     ```bash
+     /usr/local/kafka/bin/kafka-server-start.sh -daemon /usr/local/kafka/config/server.properties
+     ```
+
+8. 关闭 Kafka
+
+   ```bash
+   /usr/local/kafka/bin/kafka-server-stop.sh
+   ```
+
+9. 添加 Kafka 启停脚本
+
+   - 在 `kafka-broker-1` 服务器下的 `/root/bin` 目录下创建 `kfk.sh` 脚本文件
+
+     ```bash
+     vim /root/bin/kfk.sh
+     ```
+
+   - 添加以下内容
+
+     ```bash
+     #!/bin/bash
+     
+     case $1 in
+     "start"){
+     	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+     	do
+     	echo ------------- 启动 $i kafka -------------
+     		ssh $i "/usr/local/kafka/bin/kafka-server-start.sh -daemon /usr/local/kafka/config/server.properties"
+     	done
+     };;
+     "stop"){
+     	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+     	do
+     	echo ------------- 停止 $i kafka -------------
+     		ssh $i "/usr/local/kafka/bin/kafka-server-stop.sh"
+     	done
+     };;
+     esac
+     ```
+
+   - 添加 `kfk.sh` 脚本权限
+
+     ```bash
+     chmod +x /root/bin/kfk.sh
+     ```
+
+10. 添加联合脚本
+
+    - 在 `kafka-broker-1` 服务器下的 `/root/bin` 目录下创建 `xcall` 脚本文件
+
+      ```bash
+      vim /root/bin/xcall
+      ```
+
+    - 脚本中添加以下内容
+
+      ```bash
+      #!/bin/bash
+      
+      for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+      do
+      	echo ------------- $i -------------
+      	ssh $i "$*"
+      done
+      ```
+
+    - 增加 `xcall` 脚本文件权限
+
+      ```bash
+      chmod +x /root/bin/xcall
+      ```
+
+    - 在 `kafka-broker-1` 服务器下的 `/root/bin` 目录下创建 `cluster.sh` 脚本文件
+
+      ```bash
+      vim /root/bin/cluster.sh
+      ```
+
+    - 脚本中添加以下内容
+
+      ```bash
+      #!/bin/bash
+      
+      case $1 in
+      "start"){
+      	echo =================== 启动 kafka 集群 ===================
+      	
+      	# 启动 zookeeper 集群
+      	zk.sh start
+      	
+      	# 启动 kafka 集群
+      	kfk.sh start
+      };;
+      "stop"){
+      	echo =================== 停止 kafka 集群 ===================
+      	
+      	# 停止 kafka 集群
+          kfk.sh stop
+          
+                  # 循环至 kafka 集群进程全部停止
+                  kafka_count=$(xcall jps | grep Kafka | wc -l)
+                  while [ $kafka_count -gt 0 ]
+                  do
+                      sleep 1
+                      kafka_count=$(xcall | grep Kafka | wc -l)
+                      
+          	echo "当前未停止的 Kafka 进程数为 $kafka_count"
+          		done
+          		
+          # 停止 zookeeper 集群
+          zk.sh stop  	
+      };;
+      esac
+      ```
+
+    - 增加 `cluster.sh` 脚本文件权限
+
+11. 脚本调用
+
+    - 集群启动
+
+      ```bash
+      cluster.sh start
+      ```
+
+    - 集群停止
+
+      ```bash
+      cluster.sh stop
+      ```
+
+#### 9.2.5 Kafka 监控软件
 
 
 
