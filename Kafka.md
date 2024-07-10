@@ -2302,5 +2302,498 @@ Kafka 消费者默认的分区分配策略就是 RangeAssignor 和 CooperativeSt
 
 #### 9.2.5 Kafka 监控软件
 
+**Kafka-Eagle** 框架可以监控 Kafka 集群的整体运行情况，在生产环境中经常使用。**Kafka-Eagle** 的安装依赖于 MySQL，MySQL 主要用来存储可视化展示的数据。
 
+1. 上传 MySQL 安装包
 
+2. 创建 MySQL 安装配置脚本
+
+   ```bash
+   vim install_mysql.sh
+   ```
+
+   ```bash
+   #!/bin/bash
+   
+   # 设置错误处理
+   set -e
+   
+   # 检查是否以 root 用户运行
+   if [ "$(whoami)" != "root" ]; then
+     echo "请使用 root 用户运行此脚本"
+     exit 1
+   fi
+   
+   # 检查是否存在所有的 RPM 包
+   if [ "$(ls *.rpm | wc -l)" != "7" ]; then
+     echo "所有 MySQL RPM 包都必须在当前目录中"
+     exit 1
+   fi
+   
+   # 确认所有必需的 RPM 包
+   for pkg in mysql-community-client-8.0.31-1.el7.x86_64.rpm \
+              mysql-community-client-plugins-8.0.31-1.el7.x86_64.rpm \
+              mysql-community-common-8.0.31-1.el7.x86_64.rpm \
+              mysql-community-icu-data-files-8.0.31-1.el7.x86_64.rpm \
+              mysql-community-libs-8.0.31-1.el7.x86_64.rpm \
+              mysql-community-libs-compat-8.0.31-1.el7.x86_64.rpm \
+              mysql-community-server-8.0.31-1.el7.x86_64.rpm; do
+     if [ ! -f "$pkg" ]; then
+       echo "缺少 $pkg 文件"
+       exit 1
+     fi
+   done
+   
+   # 卸载现有的 MySQL 包
+   echo "卸载现有的 MySQL 包..."
+   systemctl stop mysqld || true
+   rpm -qa | grep -i 'mysql\|mariadb' | xargs -r rpm -e --nodeps || true
+   rm -rf /var/lib/mysql /var/log/mysqld.log /usr/lib64/mysql /etc/my.cnf /usr/my.cnf
+   
+   # 安装 MySQL RPM 包
+   echo "安装 MySQL RPM 包..."
+   yum localinstall -y *.rpm
+   
+   # 启动 MySQL 服务
+   echo "启动 MySQL 服务..."
+   systemctl start mysqld
+   systemctl enable mysqld
+   
+   # 查找临时密码
+   tpass=$(grep 'temporary password' /var/log/mysqld.log | awk '{print $NF}')
+   echo "临时密码为: $tpass"
+   
+   # 配置 MySQL 密码策略并重启
+   echo "配置 MySQL 密码策略..."
+   cat << EOF >> /etc/my.cnf
+   [mysqld]
+   validate_password.length=4
+   validate_password.policy=0
+   default_authentication_plugin=mysql_native_password
+   EOF
+   systemctl restart mysqld
+   
+   # 设置 MySQL root 密码和权限
+   echo "配置 MySQL root 用户..."
+   mysql -uroot -p"${tpass}" --connect-expired-password << EOF
+   ALTER USER 'root'@'localhost' IDENTIFIED WITH 'mysql_native_password' BY '000000';
+   CREATE USER 'root'@'%' IDENTIFIED WITH 'mysql_native_password' BY '000000';
+   GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+   FLUSH PRIVILEGES;
+   EOF
+   
+   echo "MySQL 安装和配置完成。你现在可以使用 'mysql -uroot -p000000' 登录 MySQL。"
+   ```
+
+3. 防火墙放行 `3306` 端口（三台服务器都要配置）
+
+   ```bash
+   firewall-cmd --zone=public --add-port=3306/tcp --permanent
+   
+   firewall-cmd --reload
+   ```
+
+4. 修改 Kafka 集群配置
+
+   - 切换到 `/usr/local/kafka/bin` 目录下
+
+   - 修改 `kafka-server-start.sh` 脚本中 `KAFKA_HEAP_OPTS` 部分的配置为以下内容 
+
+     ```bash
+     if [ "x$KAFKA_HEAP_OPTS" = "x" ]; then
+     	export KAFKA_HEAP_OPTS="-server -Xms2G -Xmx2G -XX:PermSize=128m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:ParallelGCThreads=8 -XX:ConcGCThreads=5 -XX:InitiatingHeapOccupancyPercent=70"
+         export JMX_PORT="9999"
+         # export KAFKA_HEAP_OPTS="-Xms1G -Xmx1G"
+     fi
+     ```
+
+   - 分发修改后的脚本
+
+     ```bash
+     xsync /usr/local/kafka/bin/kafka-server-start.sh
+     ```
+
+5. Kafka-Eagle 安装
+
+   - 上传安装包到 `opt` 目录下
+
+   - 解压 `kafka-eagle-bin-3.0.1.tar.gz` 压缩包
+
+     ```bash
+     tar -zxvf kafka-eagle-bin-3.0.1.tar.gz
+     ```
+
+   - 切换到 `kafka-eagle-bin-3.0.1` 目录下
+
+     ```bash
+     cd kafka-eagle-bin-3.0.1/
+     ```
+
+   - 解压 `efak-web-3.0.1-bin.tar.gz` 到 `/usr/local` 目录下 
+
+     ```bash
+     tar -zxvf efak-web-3.0.1-bin.tar.gz -C /usr/local
+     ```
+
+   - 将 `efak-web-3.0.1` 目录重命名为 `efak`
+
+     ```bash
+     mv efak-web-3.0.1/ efak
+     ```
+
+6. Kafka-Eagle 配置
+
+   - 切换到 `/usr/local/efak/conf` 目录下
+
+     ```bash
+     cd /usr/local/efak/conf
+     ```
+
+   - 修改 `system-config.properties` 文件
+
+     ```bash
+     vim system-config.properties
+     ```
+
+   - 将文件中的内容替换为以下内容
+
+     ```properties
+     ######################################
+     # multi zookeeper & kafka cluster list
+     # Settings prefixed with 'kafka.eagle.' will be deprecated, use 'efak.' instead
+     ######################################
+     efak.zk.cluster.alias=cluster1
+     cluster1.zk.list=kafka-broker-1:2181,kafka-broker-2:2181,kafka-broker-3:2181/kafka
+     
+     ######################################
+     # zookeeper enable acl
+     ######################################
+     cluster1.zk.acl.enable=false
+     cluster1.zk.acl.schema=digest
+     cluster1.zk.acl.username=test
+     cluster1.zk.acl.password=test
+     
+     ######################################
+     # broker size online list
+     ######################################
+     cluster1.efak.broker.size=20
+     
+     ######################################
+     # zk client thread limit
+     ######################################
+     kafka.zk.limit.size=32
+     
+     ######################################
+     # EFAK webui port
+     ######################################
+     efak.webui.port=8048
+     
+     ######################################
+     # EFAK enable distributed
+     ######################################
+     efak.distributed.enable=false
+     efak.cluster.mode.status=master
+     efak.worknode.master.host=localhost
+     efak.worknode.port=8085
+     
+     ######################################
+     # kafka jmx acl and ssl authenticate
+     ######################################
+     cluster1.efak.jmx.acl=false
+     cluster1.efak.jmx.user=keadmin
+     cluster1.efak.jmx.password=keadmin123
+     cluster1.efak.jmx.ssl=false
+     cluster1.efak.jmx.truststore.location=/data/ssl/certificates/kafka.truststore
+     cluster1.efak.jmx.truststore.password=ke123456
+     
+     ######################################
+     # kafka offset storage
+     ######################################
+     cluster1.efak.offset.storage=kafka
+     
+     ######################################
+     # kafka jmx uri
+     ######################################
+     cluster1.efak.jmx.uri=service:jmx:rmi:///jndi/rmi://%s/jmxrmi
+     
+     ######################################
+     # kafka metrics, 15 days by default
+     ######################################
+     efak.metrics.charts=true
+     efak.metrics.retain=15
+     
+     ######################################
+     # kafka sql topic records max
+     ######################################
+     efak.sql.topic.records.max=5000
+     efak.sql.topic.preview.records.max=10
+     
+     ######################################
+     # delete kafka topic token
+     ######################################
+     efak.topic.token=keadmin
+     
+     ######################################
+     # kafka sasl authenticate
+     ######################################
+     cluster1.efak.sasl.enable=false
+     cluster1.efak.sasl.protocol=SASL_PLAINTEXT
+     cluster1.efak.sasl.mechanism=SCRAM-SHA-256
+     cluster1.efak.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="kafka" password="kafka-eagle";
+     cluster1.efak.sasl.client.id=
+     cluster1.efak.blacklist.topics=
+     cluster1.efak.sasl.cgroup.enable=false
+     cluster1.efak.sasl.cgroup.topics=
+     cluster2.efak.sasl.enable=false
+     cluster2.efak.sasl.protocol=SASL_PLAINTEXT
+     cluster2.efak.sasl.mechanism=PLAIN
+     cluster2.efak.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="kafka" password="kafka-eagle";
+     cluster2.efak.sasl.client.id=
+     cluster2.efak.blacklist.topics=
+     cluster2.efak.sasl.cgroup.enable=false
+     cluster2.efak.sasl.cgroup.topics=
+     
+     ######################################
+     # kafka ssl authenticate
+     ######################################
+     cluster3.efak.ssl.enable=false
+     cluster3.efak.ssl.protocol=SSL
+     cluster3.efak.ssl.truststore.location=
+     cluster3.efak.ssl.truststore.password=
+     cluster3.efak.ssl.keystore.location=
+     cluster3.efak.ssl.keystore.password=
+     cluster3.efak.ssl.key.password=
+     cluster3.efak.ssl.endpoint.identification.algorithm=https
+     cluster3.efak.blacklist.topics=
+     cluster3.efak.ssl.cgroup.enable=false
+     cluster3.efak.ssl.cgroup.topics=
+     
+     # 配置 mysql 连接
+     efak.driver=com.mysql.cj.jdbc.Driver
+     efak.url=jdbc:mysql://kafka-broker-1:3306/ke?useUnicode=true&characterEncoding=UTF-8&zeroDateTimeBehavior=convertToNull
+     efak.username=root
+     efak.password=000000
+     ```
+
+7. 添加 `eagle` 环境变量
+
+   - 在 `/etc/profile.d/my_env.sh` 脚本中追加以下内容
+
+     ```properties
+     # kafka-efak
+     export KE_HOME=/usr/local/efak
+     export PATH=$PATH:$KE_HOME/bin
+     ```
+
+   - 刷新环境变量
+
+     ```bash
+     source /etc/profile.d/my_env.sh
+     ```
+
+8. 启动集群
+
+   - 启动 zookeeper、Kafka 集群
+
+     ```bash
+     /root/bin/cluster.sh start
+     ```
+
+   - 启动 efak
+
+     ```bash
+     cd /usr/local/efak
+     ```
+
+     ```bash
+     # 启动 efak
+     bin/ke.sh start
+     ```
+
+     ```bash
+     # 停止 efak
+     bin/ke.sh stop
+     ```
+
+   - 防火墙放行 `8048、9999` 端口（三台服务器都要配置）
+
+     ```bash
+     firewall-cmd --zone=public --add-port=8048/tcp --permanent
+     firewall-cmd --zone=public --add-port=9999/tcp --permanent
+     
+     firewall-cmd --reload
+     ```
+
+#### 9.2.6 KRaft 模式
+
+Kafka 作为一种高吞吐量的分布式发布订阅消息系统，在消息应用中广泛使用，尤其在需要实时数据处理和应用程序活动跟踪的场景，Kafka 已成为首选服务。在 **Kafka 2.8** 之前，Kafka 强依赖 zookeeper 来负责集群元数据的管理，这也导致当 zookeeper 集群性能发生抖动时，Kafka 的性能也会受到很大的影响。**2.8 版本之后**，Kafka 开始**提供 KRaft（Kafka KRaft，依赖 Java 8+）模式**，开始**去除 zookeeper 的依赖**。最新的 3.6.1 版本中，Kafka 依然兼容 zookeeper Controller，但 Kafka KRaft 元数据模式，已经可以在不依赖 zookeeper 的情况下独立启动 Kafka 了。官方预计会在 Kafka 4.0 中移除 zookeeper。 
+
+**KRaft 模式的优势**
+
+- **更简单的部署和管理**：通过只安装和管理一个应用程序，无需安装更多的软件，简化软件的安装部署。这也使得在边缘的小型设备中更容易利用 Kafka。
+- **提高可扩展性**：KRaft 的恢复时间比 zookeeper 快一个数量级。这使得我们能够有效地扩展到单个集群中的数百万个分区。zookeeper 的有效限制是数万个分区。
+- **更有效的元数据传播**：基于日志、事件驱动的元数据传播可以提高 Kafka 的许多核心功能的性能。另外它还支持元数据主题的快照。
+- **读写能力提高**：由于不依赖 zookeeper，集群扩展时不再受到 zookeeper 读写能力限制。
+- **节点合理分配**：controller 不再动态选举，而是由配置文件规定。这样可以针对性的加强 controller 节点的配置，而不是像以前一样对随机 controller 节点产生高负载。
+
+**Kafka-KRaft 集群部署**
+
+1. 上传 `kafka_2.12-3.6.1.tgz` 文件到 `opt` 目录下
+
+2. 解压 `kafka_2.12-3.6.1.tgz`  文件到 `/usr/local` 目录下
+
+   ```bash
+   tar -zxvf kafka_2.12-3.6.1.tgz -C /usr/local
+   ```
+
+3. 切换到 `/usr/local` 目录下
+
+   ```bash
+   cd /usr/local
+   ```
+
+4. 将 `kafka_2.12-3.6.1` 目录重命名为 `kafka-kraft`
+
+   ```bash
+   mv kafka_2.12-3.6.1/ kafka-kraft
+   ```
+
+5. 切换到 `/usr/local/kafka-kraft/config/kraft` 目录下
+
+   ```bash
+   cd /usr/local/kafka-kraft/config/kraft
+   ```
+
+6. 修改 `server.properties` 文件，并替换以下内容
+
+   ```properties
+   # kafka 的角色(controller 相当于主机、broker 节点相当于从机，主机类似 zk 功能)
+   process.roles=broker, controller
+   
+   # 节点id
+   node.id=1
+   
+   # controller 服务协议别名
+   controller.listener.names=CONTROLLER
+   
+   # 全 controller 列表
+   controller.quorum.voters=1@kafka-broker-1:9093,2@kafka-broker-2:9093,3@kafka-broker-3:9093
+   
+   # 不同服务器绑定的端口
+   listeners=PLAINTEXT://:9092,CONTROLLER://:9093
+   
+   # broker 服务协议别名
+   inter.broker.listener.name=PLAINTEXT
+   
+   # broker 对外暴露的地址
+   advertised.listeners=PLAINTEXT://kafka-broker-1:9092
+   
+   # Kafka 数据存储目录
+   log.dirs=/usr/local/kafka-kraft/datas
+   ```
+
+7. 分发 `server.properties` 配置到 `kafka-broker-2、kafka-broker-3` 节点
+
+   ```bash
+   xsync /usr/local/kafka-kraft/config/kraft/server.properties
+   ```
+
+   ```tex
+   # 修改以下内容
+   node.id=2（kafka-broker-2）
+   node.id=3（kafka-broker-3）
+   
+   advertised.listeners=PLAINTEXT://kafka-broker-2:9092（kafka-broker-2）
+   advertised.listeners=PLAINTEXT://kafka-broker-3:9092（kafka-broker-3）
+   ```
+
+8. 初始化集群数据目录
+
+   - 在每个部署节点生成存储目录唯一 ID
+
+     ```bash
+     cd /usr/local/kafka-kraft
+     ```
+
+     ```bas
+     # 记录下生成的 ID,比如我这里为: Q3IKiPcMQcWTOZIbrBRHWA
+     bin/kafka-storage.sh random-uuid
+
+   - 用生成的 ID 格式化每一个 Kafka 数据存储目录（三台服务器都要操作，使用同一个 ID）
+
+9. 启动 Kafka 集群
+
+   - 切换到  `/usr/local/kafka-kraft` 目录下
+
+     ```bash
+     cd /usr/local/kafka-kraft
+     ```
+
+   - 执行 `kraft` 启动脚本
+
+     ```bash
+     bin/kafka-server-start.sh -daemon config/kraft/server.properties
+     ```
+
+10. 停止 Kafka 集群
+
+    ```bash
+    bin/kafka-server-stop.sh
+    ```
+
+11. 封装 `kraft` 启停脚本
+
+    - 在 `/root/bin` 目录下创建 `kfk-kraft.sh` 文件
+
+      ```bash
+      touch /root/bin/kfk-kraft.sh
+      ```
+
+    - `kfk-kraft.sh` 文件中添加以下内容
+
+      ```bash
+      #!/bin/bash
+      
+      case $1 in
+      "start"){
+      	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+      	do
+      	echo ------------- 启动 $i kafka-kraft -------------
+      		ssh $i "/usr/local/kafka-kraft/bin/kafka-server-start.sh -daemon /usr/local/kafka-kraft/config/kraft/server.properties"
+      	done
+      };;
+      "stop"){
+      	for i in kafka-broker-1 kafka-broker-2 kafka-broker-3
+      	do
+      	echo ------------- 停止 $i kafka-kraft -------------
+      		ssh $i "/usr/local/kafka-kraft/bin/kafka-server-stop.sh"
+      	done
+      };;
+      esac
+      ```
+
+    - 防火墙放行 `9093` 端口（三台服务器都要配置）
+
+      ```bash
+      firewall-cmd --zone=public --add-port=9093/tcp --permanent
+      
+      firewall-cmd --reload
+      ```
+
+    - 添加 `kfk-kraft.sh` 脚本权限
+
+      ```bash
+      chmod +x /root/bin/kfk-kraft.sh
+      ```
+
+    - 启动和停止集群
+
+      ```bash
+      # 启动
+      kfk-kraft.sh start
+      
+      # 停止
+      kfk-kraft.sh stop
+      ```
+
+      
