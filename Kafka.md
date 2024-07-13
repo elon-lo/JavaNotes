@@ -2796,4 +2796,312 @@ Kafka 作为一种高吞吐量的分布式发布订阅消息系统，在消息�
       kfk-kraft.sh stop
       ```
 
+## 十、Kafka 集成
+
+### 10.1 大数据应用场景
+
+#### 10.1.1 Flume 集成
+
+Flume 也是日志采集器，类似于 ELK 中的 LogStash 软件功能。早期设计的功能就是通过 Flume 采集数据，然后将数据写入 HDFS 分布式文件存储系统，不过随着功能的扩展，现在也可以把采集的数据写入到 Kafka 中，作为实时数据使用。
+
+1. 下载 Flume
+   - Flume 官网地址：https://flume.apache.org/
+   - Flume 文档地址：https://flume.apache.org/FlumeUserGuide.html
+   - Flume 下载地址：https://archive.apache.org/dist/flume/
+
+2. 安装部署 Flume
+
+   - 上传 `Flume` 压缩包到 `/opt` 目录下
+
+   - 将 `Flume` 压缩包解压至 `/usr/local` 目录下
+
+     ```bash
+     tar -zxvf apache-flume-1.10.1-bin.tar.gz -C /usr/local
+     ```
+
+   - 修改 `Flume` 目录名称
+
+     ```bash
+     mv /usr/local/apache-flume-1.10.1-bin/ /usr/local/flume
+     ```
+
+   - 生产环境下，将 `Flume` 的堆内存设置为 4G 或以上
+
+     ```bash
+     # 修改配置文件名称 
+     mv /usr/local/flume/conf/flume-env.sh.template /usr/local/flume/conf/flume-env.sh
+     ```
+
+     ```bash
+     # 在 /usr/local/flume/conf/flume-env.sh 文件中添加以下内容
+     export JAVA_OPTS="-Xms4096m -Xmx4096m -Dcom.sun.management.jmxremote"
+     ```
+
+3. 增加集成配置
+
+   1. 创建 job 目录
+
+      ```bash
+      mkdir -p /usr/local/flume/job
+      ```
+
+   2. 创建配置文件
+
+      ```bash
+      touch /usr/local/flume/job/file_to_kafka.conf
+      ```
+
+   3. `file_to_kafka.conf` 文件中添加以下内容
+
+      ```properties
+      # 定义组件
+      a1.sources = r1
+      a1.channels = c1
       
+      # 配置 source
+      a1.source.r1.type = TAILDIR
+      a1.source.r1.filegroups = f1
+      
+      # 日志（数据）文件
+      a1.source.r1.filegroups.f1 = /usr/local/flume/datas/test.log
+      a1.source.r1.positionFile = /usr/local/flume/taidir_position.json
+      
+      # 配置 channel
+      # 采用 Kafka channel,省去了 Sink,提高了效率
+      a1.channels.c1.type = org.apache.flume.channel.kafka.KafkaChannel
+      a1.channels.c1.kafka.bootstrap.servers = kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092
+      a1.channels.c1.kafka.topic = test
+      a1.channels.c1.parseAsFlumeEvent = false
+      
+      # 组装
+      a1.source.r1.channels = c1
+      ```
+
+4. 集成测试
+
+   - 启动 `zookeeper` 和 `Kafka` 集群
+
+     ```bash
+     /root/bin/cluster.sh start
+     ```
+
+   - 执行 `Flume` 操作采集数据到 `Kafka`
+
+     ```bash
+     /usr/local/flume/bin/flume-ng agent -n a1 -c conf/ -f job/file_to_kafka.conf
+     ```
+
+   
+   可以通过向 Flume 的 `/usr/local/flume/datas/test.log` 文件中写入需要的日志内容，Kafka 后续就可以消费这些写入的日志数据
+
+#### 10.1.2 SparkStreaming 集成
+
+Spark 是一个分布式计算引擎，同时也是一款非常强大的离线分布式计算框架，其中的 SparkStreaming 模块用于准实时数据处理，其中就可以将 Kafka 作为数据源进行处理。
+
+1. 创建一个 Spark 的  Maven 项目
+
+2. 添加 `pom.xml` 依赖信息
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <modelVersion>4.0.0</modelVersion>
+   
+       <groupId>com.yu.kafka.spark</groupId>
+       <artifactId>kafka-spark</artifactId>
+       <version>1.0-SNAPSHOT</version>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+           <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+           <spark.version>3.3.1</spark.version>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>org.apache.spark</groupId>
+               <artifactId>spark-core_2.12</artifactId>
+               <version>${spark.version}</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.apache.spark</groupId>
+               <artifactId>spark-streaming_2.12</artifactId>
+               <version>${spark.version}</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.apache.spark</groupId>
+               <artifactId>spark-streaming-kafka-0-10_2.12</artifactId>
+               <version>${spark.version}</version>
+           </dependency>
+       </dependencies>
+   
+   </project>
+   ```
+
+3. 添加测试代码
+
+   ```java
+   /**
+    * Kafka集成SparkStreaming
+    *
+    * @author elonlo
+    * @date 2024/7/13 23:32
+    */
+   public class KafkaSparkStreamingTest {
+   
+   	/**
+   	 * kafka服务地址
+   	 */
+   	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+   
+   	/**
+   	 * kafka主题
+   	 */
+   	private static final String TOPIC = "test";
+   
+   	/**
+   	 * 组
+   	 */
+   	private static final String GROUP = "elonlo";
+   
+   	public static void main(String[] args) throws InterruptedException {
+   
+   		// 1.创建 spark 配置对象
+   		SparkConf sparkConf = new SparkConf();
+   		sparkConf.setMaster("local[*]");
+   		sparkConf.setAppName("SparkStreaming");
+   
+   		// 2.创建环境对象
+   		JavaStreamingContext ssc = new JavaStreamingContext(sparkConf, new Duration(3 * 1000));
+   
+   		// 3.使用 Kafka 作为数据源
+   		// 配置 Kafka
+   		Map<String, Object> map = new HashMap<>(16);
+   		map.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVER);
+   		map.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+   		map.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+   		map.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP);
+   		map.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+   
+   		// 4.配置需要消费的主题
+   		List<String> list = new ArrayList<>();
+   		list.add(TOPIC);
+   
+   		JavaInputDStream<ConsumerRecord<Object, Object>> directStream = KafkaUtils.createDirectStream(
+   				ssc,
+   				LocationStrategies.PreferBrokers(),
+   				ConsumerStrategies.Subscribe(list, map));
+   
+   		directStream.map((Function<ConsumerRecord<Object, Object>, Object>) ConsumerRecord::value)
+   				.print(100);
+   
+   		ssc.start();
+   		ssc.awaitTermination();
+   	}
+   }
+   ```
+
+4. 启动本地 Kafka 并生产数据
+
+#### 10.1.3 Flink 集成
+
+Flink 也是一款强大的实时分布式计算框架和引擎，可以将 Kafka 作为数据源处理。
+
+1. 创建一个 Flink 的 Maven 项目
+
+2. 添加 `pom.xml` 依赖信息
+
+   ```xml
+   <properties>
+       <maven.compiler.source>8</maven.compiler.source>
+       <maven.compiler.target>8</maven.compiler.target>
+       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+       <flink.version>1.17.0</flink.version>
+   </properties>
+   
+   <dependencies>
+       <dependency>
+           <groupId>org.apache.flink</groupId>
+           <artifactId>flink-java</artifactId>
+           <version>${flink.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>org.apache.flink</groupId>
+           <artifactId>flink-streaming-java</artifactId>
+           <version>${flink.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>org.apache.flink</groupId>
+           <artifactId>flink-clients</artifactId>
+           <version>${flink.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>org.apache.flink</groupId>
+           <artifactId>flink-connector-kafka</artifactId>
+           <version>${flink.version}</version>
+       </dependency>
+   </dependencies>
+   ```
+
+3. 添加测试代码
+
+   ```java
+   /**
+    * kafka集成flink
+    *
+    * @author elonlo
+    * @date 2024/7/14 0:08
+    */
+   public class KafkaFlinkTest {
+   
+   	/**
+   	 * kafka服务地址
+   	 */
+   	private static final String BOOTSTRAP_SERVER = "localhost:9092";
+   
+   	/**
+   	 * kafka主题
+   	 */
+   	private static final String TOPIC = "test";
+   
+   	/**
+   	 * 组
+   	 */
+   	private static final String GROUP = "elonlo";
+   
+   
+   	public static void main(String[] args) throws Exception {
+   
+   		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+   
+   		KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
+   				.setBootstrapServers(BOOTSTRAP_SERVER)
+   				.setTopics(TOPIC)
+   				.setGroupId(GROUP)
+   				.setStartingOffsets(OffsetsInitializer.latest())
+   				.setValueOnlyDeserializer(new SimpleStringSchema())
+   				.build();
+   
+   		DataStreamSource<String> streamSource = env.fromSource(
+   				kafkaSource,
+   				WatermarkStrategy.noWatermarks(),
+   				"kafka-source");
+   
+   		streamSource.print("kafka");
+   
+   		env.execute();
+   	}
+   }
+   ```
+
+4. 启动本地 Kafka 并生产数据
+
+10.1.4 SpringBoot 集成
