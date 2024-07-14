@@ -3104,4 +3104,445 @@ Flink 也是一款强大的实时分布式计算框架和引擎，可以将 Kafk
 
 4. 启动本地 Kafka 并生产数据
 
-10.1.4 SpringBoot 集成
+### 10.2 SpringBoot 集成
+
+1. 创建一个 Kafka 的 SpringBoot 项目
+
+   注意这里使用的是 SpringBoot3，要求 Java 17 为最低版本
+
+2. 添加 `pom.xml` 依赖信息
+
+   ```xml
+   <properties>
+       <java.version>17</java.version>
+       <kafka.version>3.6.1</kafka.version>
+       <fastjson.version>1.2.83</fastjson.version>
+       <hutool.version>5.8.11</hutool.version>
+   </properties>
+   
+   <dependencies>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter</artifactId>
+       </dependency>
+   
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-web</artifactId>
+           <exclusions>
+               <exclusion>
+                   <groupId>org.springframework.boot</groupId>
+                   <artifactId>spring-boot-starter-logging</artifactId>
+               </exclusion>
+           </exclusions>
+       </dependency>
+   
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-test</artifactId>
+           <scope>test</scope>
+       </dependency>
+   
+       <!-- kafka 集成 spring 依赖 -->
+       <dependency>
+           <groupId>org.springframework.kafka</groupId>
+           <artifactId>spring-kafka</artifactId>
+       </dependency>
+   
+       <!-- kafka 客户端 -->
+       <dependency>
+           <groupId>org.apache.kafka</groupId>
+           <artifactId>kafka-clients</artifactId>
+           <version>${kafka.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>com.alibaba</groupId>
+           <artifactId>fastjson</artifactId>
+           <version>${fastjson.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>cn.hutool</groupId>
+           <artifactId>hutool-json</artifactId>
+           <version>${hutool.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>cn.hutool</groupId>
+           <artifactId>hutool-db</artifactId>
+           <version>${hutool.version}</version>
+       </dependency>
+   
+       <dependency>
+           <groupId>org.projectlombok</groupId>
+           <artifactId>lombok</artifactId>
+           <optional>true</optional>
+       </dependency>
+   </dependencies>
+   
+   <build>
+       <plugins>
+           <plugin>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-maven-plugin</artifactId>
+           </plugin>
+       </plugins>
+   </build>
+   ```
+
+3. 添加配置信息
+
+   ```yaml
+   spring:
+     kafka:
+       bootstrap-servers: localhost:9092
+       producer:
+         acks: all
+         batch-size: 16384
+         buffer-memory: 33554432
+         key-serializer: org.apache.kafka.common.serialization.StringSerializer
+         value-serializer: org.apache.kafka.common.serialization.StringSerializer
+         retries: 0
+   
+       consumer:
+         # 消费者组
+         group-id: test
+         # 消费方式: 在有提交记录的时候, earliest 与 latest 是一样的,从有提交记录的下一条开始消费
+         # earliest: 无提交记录,从头开始消费
+         # latest:   无提交记录,从最新消息的下一条开始消费
+         auto-offset-reset: latest
+         # 是否自动提交偏移量 offset
+         enable-auto-commit: true
+         # 自动提交的频率,须先开启 enable-auto-commit 此配置才能生效
+         auto-commit-interval: 1s
+         key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+         value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+         max-poll-records: 2
+         properties:
+           # 如果在此时间内没有收到心跳,该消费者会被踢出组并触发组再平衡
+           session.timeout.ms: 120000
+           # 最大消费时间,获取消息后提交偏移量的最大时间,超过设定的时间(默认5分钟),
+           max.poll.interval.ms: 300000
+           # 配置控制客户端等待请求响应的最长时间
+           # 如果在超时之前没有收到响应,客户端将在必要时重新发送请求
+           # 并且如果重试次数用尽,则请求失败
+           request.timeout.ms: 60000
+           # 订阅或分配主题时,允许自动创建主题。0.11 之前,必须设置 false
+           allow.auto.create.topics: true
+           # poll 方法向协调器发送心跳的频率,为 session.timeout.ms 的三分之一
+           heartbeat.interval.ms: 40000
+           # 每个分区里返回的记录最多不超过 max.partitions.fetch.bytes 指定的字节
+           # 0.10.1 版本之后,如果 fetch 的第一个非空分区中的第一条消息大于这个限制
+           # 仍然会返回该消息,以确保消费者可以进行消费
+   #        max.partitions.fetch.bytes: 1048576
+   
+       listener:
+         # 当 enable-auto-commit 的值设置为 false 时,该配置会生效,为 true 时不生效
+         # manual_immediate: 需要手动调用 Acknowledgment.acknowledge() 后立即提交
+         ack-mode: manual_immediate
+         # 如果至少有一个 topic 不存在, true: 启动失败,false: 忽略
+         missing-topics-fatal: true
+         # type: single,单条消费 batch,批量消费 批量消费需要配合 consumer.max-poll-records
+         type: batch
+         # 为每个消费者实例创建多少个线程,多出分区的线程空闲
+         concurrency: 2
+   
+       template:
+         default-topic: "test"
+   
+   server:
+     port: 9999
+   ```
+
+4. 创建 Kafka 配置类
+
+   ```java
+   /**
+    * kafka 配置类
+    *
+    * @author elonlo
+    * @date 2024/7/14 10:28
+    */
+   public class KafkaConfig {
+   
+   	/**
+   	 * 主题名称
+   	 */
+   	public static final String TOPIC = "test";
+   
+   	/**
+   	 * 消费者组 id
+   	 */
+   	public static final String GROUP_ID = "test";
+   }
+   ```
+
+5. 生产者代码
+
+   ```java
+   /**
+    * kafka 生产者控制器
+    *
+    * @author elonlo
+    * @date 2024/7/14 10:30
+    */
+   @Slf4j
+   @RestController
+   @RequestMapping("/kafka")
+   public class KafkaProducerController {
+   
+   	private final KafkaTemplate<String, String> kafkaTemplate;
+   
+   	@Autowired
+   	public KafkaProducerController(KafkaTemplate<String, String> kafkaTemplate) {
+   		this.kafkaTemplate = kafkaTemplate;
+   	}
+   
+   	@PostMapping( "/produce")
+   	public String producer(@RequestBody Object obj) {
+   
+   		try {
+   			String obj2String = JSONUtil.toJsonStr(obj);
+   
+   			// 生产者发送消息
+   			kafkaTemplate.send(KafkaConfig.TOPIC, obj2String);
+   
+   			return "success";
+   		} catch (Exception e) {
+   			e.printStackTrace();
+   		}
+   
+   		return "false";
+   	}
+   }
+   ```
+
+6. 消费者代码
+
+   ```java
+   /**
+    * kafka 消费者
+    *
+    * @author elonlo
+    * @date 2024/7/14 10:38
+    */
+   @Slf4j
+   @Component
+   public class KafkaDataConsumer {
+   
+   	/***
+   	 * 监听主题并消费消息
+   	 *
+   	 * @param messages  生产者发送的消息
+   	 * @param topic     消费者消费的主题
+   	 */
+   	@KafkaListener(topics = KafkaConfig.TOPIC, groupId = KafkaConfig.GROUP_ID)
+   	public void consumeMessage(List<String> messages, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
+   
+   		for (String message : messages) {
+   			final JSONObject object = JSONUtil.parseObj(message);
+   
+   			log.info("{}消费了{}主题发送的消息: {}", KafkaConfig.GROUP_ID, topic, object.getStr("data"));
+   		}
+   	}
+   }
+   ```
+
+## 十一、Kafka 优化
+
+### 11.1 资源配置
+
+#### 11.1.1 操作系统
+
+Kafka 的**网络客户端**底层使用 **Java NIO** 的 **Selector 方式**，而 Selector 在 Linux 的实现是 **epoll**，在 Windows 上实现机制是 **select**。因此 Kafka 部署在 Linux 上会有**更高效的 I/O 性能**。
+
+数据在磁盘和网络之间进行传输的时候，在 Linux 上可以享受到**零拷贝**带来的**快捷和高效**，而 Windows **只会在一定程度**上使用零拷贝操作。所以建议 Kafka 部署在 Linux 操作系统上。
+
+#### 11.1.2 磁盘选择
+
+Kafka 存储方式为**顺序读写**，机械硬盘的最大劣势在于随机读写慢，所以使用**机械硬盘**并**不会造成 Kafka 性能降低**，选用普通的机械硬盘即可。Kafka 自身有冗余机制，而且通过分区的设计，实现了负载均衡的功能。所以不用组磁盘阵列也是可以的。
+
+下面是一个简单估算 Kafka 磁盘空间的案例：
+
+**设计场景**
+
+日志数据每天向 Kafka 发送 1 亿条数据，每条数据有两个副本防止数据丢失，数据保存两周，每条消息平均大小为 1KB。
+
+1. 每天 1 亿条 1KB 消息，保存两份，则每天大小为：
+
+   (100000000 * 1KB * 2) / 1024 / 1024 ≈ 200GB
+
+2. Kafka 除了消息数据还有其他类型的数据，故增加 10% 的冗余空间，则需要 220GB
+
+3. 两周时间大约为 220GB * 14 ≈ 3TB
+
+4. 如果启用压缩，压缩比在 0.75 左右，则总存储空间规划为 3TB * 0.75 = 2.25TB
+
+#### 11.1.3 网络带宽
+
+如果网络为万兆带宽，基本不会出现网络瓶颈，如果数据量特别大，可以按照下文中的设计场景进行计算。如果网络为百兆或者千兆带宽，在处理较大数据量场景下会出现网络瓶颈，可按照下面的传统经验公式进行计算处理，也可以通过下述场景在生产环境按照实际情况进行设计。
+
+**计算公式：服务器台数 = 2 × （生产者峰值生产速率 × 副本数 ÷ 100） + 1**
+
+**设计场景**
+
+如果机房为千兆带宽，并且需要在一小时内处理 1TB 的数据，需要多少台 Kafka 服务器？
+
+1. 由于带宽为千兆网络，1000Mbps = 1Gbps，则每秒钟每个服务器能收到的数据量为 1Gb = 1000Mb
+2. 假设 Kafka 占用整个服务器网络的 70%（其他 30% 为别的服务预留），则 Kafka 可以使用到 700Mb 的带宽，但是如果从常规角度考虑，不能让 Kafka 一直处于满带宽的情况，所以要预留出 2/3 甚至 3/4 的资源，也就是说，Kafka 单台服务器的实际使用带宽应该为 700Mb / 3 = 240Mb
+3. 1 小时需要处理 1TB 数据，1TB = 1024 * 1024 * 8Mb = 8000000Mb，则一秒钟处理数据量为：8000000Mb / 60 / 60 ≈ 2230Mb 数据
+4. 需要的服务器台数为：2230Mb / 240Mb ≈ 10 台 
+5. 考虑到消息的副本数如果为 2，则需要 20 台服务器，副本如果为 3，则需要 30 台服务器
+
+#### 11.1.4 内存配置
+
+Kafka 运行过程中涉及到的内存主要为 JVM 的堆内存和操作系统的页缓存，每个 Broker 节点的堆内存建议 10-15G 内存，而数据文件（默认为 1G）中的数据 25% 在内存就可以了。综上所述，Kafka 在大数据场景下能够流畅稳定运行至少需要 11G 内存，建议安装 Kafka 的服务器节点的内存至少大于等于 16G。
+
+#### 11.1.5 CPU 选择
+
+观察所有的 Kafka 与线程相关的配置，一共有以下几个：
+
+| 参数名                            | 备注                                                   | 默认值 |
+| --------------------------------- | ------------------------------------------------------ | ------ |
+| num.network.threads               | 服务器用于接收来自网络的请求并网络发送响应的线程数     | 3      |
+| num.io.threads                    | 服务器用于处理请求的线程数，可能包括磁盘 I/O           | 8      |
+| num.replica.fetchers              | 副本拉取线程数，调大该值可以增加副本节点拉取的并行度   | 1      |
+| num.recovery.threads.per.data.dir | 每个数据目录在启动时用于日志恢复和在关闭时刷新的线程数 | 1      |
+| log.cleaner.threads               | 用于日志清理的后台线程数                               | 1      |
+| background.threads                | 用于各种后台处理任务的线程数                           | 10     |
+
+在 Kafka 生产环境中，建议 CPU 核数最少为 16 核，实际 32 核 以上，方可保证大数据环境中的 Kafka 集群正常处理和运行。
+
+### 11.2 集群容错
+
+#### 11.2.1 副本分配策略
+
+Kafka 采用**分区机制**对数据进行**管理和存储**，每个 Topic 可以有**多个分区**，每个分区可以有**多个副本**。应该根据业务需求合理配置副本，一般建议设置至少 2 个副本以保证高可用性。
+
+#### 11.2.2 故障转移方案
+
+当 Kafka 集群中的**某个 Broker 节点发生故障**时，其负责的**分区副本**将会被**重新分配**到**其他存活的 Broker 节点**上，并且会**自动选择一个备份分区**作为新的**主分区**来处理消息的读写请求。
+
+#### 11.2.3 数据备份和恢复
+
+Kafka 采用基于**日志文件**的存储方式，每个 Broker 节点上都有**副本数据的本地备份**。在数据备份方面，可以通过配置 Kafka 的**数据保留策略**和**数据分区调整策略**来保证**数据的持久性和安全性**；在数据恢复方面，可以通过**查找备份数据**并进行相应的**分区副本替换**来恢复数据。
+
+### 11.3 参数配置优化
+
+| 参数名                                | 默认参数值    | 所在端 | 优化场景 | 备注                     |
+| ------------------------------------- | ------------- | ------ | -------- | ------------------------ |
+| num.network.threads                   | 3             | 服务端 | 低延迟   |                          |
+| num.io.threads                        | 8             | 服务端 | 低延迟   |                          |
+| socket.send.buffer.bytes              | 102400(100K)  | 服务端 | 高吞吐   |                          |
+| socket.receiver.buffer.bytes          | 65536(64K)    | 服务端 | 高吞吐   |                          |
+| max.in.flight.requests.per.connection | 5             | 生产端 | 幂等     |                          |
+| buffer.memory                         | 33554432(32M) | 生产端 | 高吞吐   |                          |
+| batch.size                            | 16384(16K)    | 生产端 | 高性能   |                          |
+| linger.ms                             | 0             | 生产端 | 高性能   |                          |
+| fetch.min.bytes                       | 1             | 消费端 | 高性能   | 网络交互次数             |
+| max.poll.records                      | 500           | 消费端 | 批量处理 | 控制批量获取消息数量     |
+| fetch.max.bytes                       | 57671680(55M) | 消费端 | 批量处理 | 控制批量获取消息字节大小 |
+
+### 11.4 数据压缩和批量发送
+
+通过压缩和批量发送可以优化 Kafka 的性能表现。Kafka 支持多种数据压缩算法，包括 Gzip、Snappy、lz4和zstd。在不同场景下，需要选择合适的压缩算法，以确保性能最优。
+
+下面是常见的几种压缩算法的测试数据：
+
+| 压缩算法 | 压缩比例 | 压缩效率 | 解压缩效率 |
+| -------- | -------- | -------- | ---------- |
+| snappy   | 2.073    | 580m/s   | 2020m/s    |
+| lz4      | 2.101    | 800m/s   | 4220m/s    |
+| zstd     | 2.884    | 520m/s   | 1600m/s    |
+
+从表格数据可以看出，**zstd** 有着**最高压缩比**，而 **lz4** 算法在**吞吐量**上表现得**非常高效**。对于 Kafka 而言，在**吞吐量**上比较：**lz4 > snappy > zstd > gzip**；而在**压缩效率**上比较：**zstd > lz4 > gzip > snappy**。
+
+Kafka 支持两种批处理方式：异步批处理和同步批处理。在不同场景下，需要选择合适的批处理方式，进行性能优化。同时需要合理设置批处理参数，比如 `batch.size`、`linger.ms` 等。
+
+## 十二、Kafka 常见问题
+
+1. Kafka 的 LSO、LEO、HW 的含义？
+
+   LSO、LEO、HW 其实都是 Kafka 中偏移量。只不过它们代表的含义是不同的。
+
+   **LSO**
+
+   这里的 LSO 有两层含义：一个是 `Long Start Offset`，一个是 `Long Stable Offset`，`Long Start Offset` 表示数据文件的起始偏移量，比如 Kafka 中的 `.log` 文件名前面的数字就是当前文件 LSO；`Long Stable Offset` 表示的
+
+   位移值是用来判断事务型消费者的可见性，就是所谓的事务隔离级别，一个叫 `read_commited`，一个叫 `read_uncommited`。
+
+   **LEO**
+
+   LEO 表示 Long End Offset，就是下一个要写入的数据偏移量，所以这个偏移量的数据是不存在的。
+
+   **HW**
+
+   HW 表示高水位偏移量的意思。是 Kafka 为了数据的一致性所增加的一种数据隔离方式。简单来说，就是消费者只能消费到小于高水位偏移量的数据。
+
+2. Controller 选举是怎么实现的？
+
+   这里的 Controller 选举主要指的是 Kafka 依赖于 ZK 实现的 Controller 选举机制，也就是说，Kafka 的所有 Broker 节点会监听 ZK 中的一个 Controller 临时节点，如果这个节点没有创建，那么 Broker 就会申请创建，一旦创建成功，那么创建的 Broker 就会当选为集群的管理者 Controller，一旦失去了和 ZK 的通信，那么临时节点就会消失，此时就会再次进行 Controller 的选举，选举的规则是完全一样的，一旦新的 Controller 被选举，那么 Controller 纪元会被更新。
+
+3. 分区副本 AR、ISR、OSR 的含义？
+
+   **AR**
+
+   可以理解为分区的所有副本集合。
+
+   **ISR**
+
+   表示的是正在同步数据的副本列表，列表的第一个就是分区的 Leader 副本，其他的副本就是 Follower 副本。
+
+   **OSR**
+
+   就是没有处于同步数据的副本列表。一旦副本拉取数据满足了特定的条件，那么会从 OSR 中移出并增加到 ISR 中；同样，如果副本没有拉取数据满足了特定的条件，就会从 ISR 中移出，放入到 OSR 中。这就是所谓的 ISR 列表的收缩和扩张。Kafka 使用这种 ISR 的方式有效的权衡了数据可靠性和性能之间的关系。
+
+4. Producer 的 ACK 应答策略
+
+   ACK 应答机制就是生产者发送数据后 Kafka 的接收确认方式。Kafka 确认的方式有以下三种：
+
+   - **acks=0**
+
+     当生产者数据发送到网络客户端缓冲区后，Kafka 就认为数据收到了，那么就会进行响应，也就是应答。但是这种方式数据可靠性是非常低的，因为不能保证数据一定会写入日志文件，但是发送效率影响不大。
+
+   - **acks=1**
+
+     当主题分区的 Leader 副本将数据写入日志后，Kafka 才认为数据收到了，然后再对生产者进行响应。这种方式发送的效率会降低，但是可靠性会高一些。
+
+   - **acks=-1或acks=all**
+
+     当主题分区的 ISR 副本列表中所有的副本都已经将数据写入日志后，Kafka 才认为数据收到了，然后再对生产者进行响应。这种方式的发送效率会非常低，生产者对象可以根据生产环境和业务需求对应答机制进行配置。
+
+   生产者数据幂等性操作要求 ACK 应答处理机制必须为 -1，而 ACK 的参数默认值也是 -1。
+
+5. Producer 消息重复或消息丢失的原因？
+
+   主要就是 Kafka 为了提高数据可靠性所提供的重试机制，如果禁用重试机制，那么一旦数据发送失败，数据就丢失了。而数据重复，恰恰是因为开启重试机制后，如果因为网络阻塞或不稳定，导致数据重复发送，那么数据就有可能是重复的。所以 Kafka 提供了幂等性操作解决数据重复，并且幂等性操作要求必须开启重试功能和 ACK 取值为 -1，这样数据就不会丢失了。
+
+   Kafka 提供的幂等性操作只能保证同一个生产者会话中同一个分区中的数据不会重复，一旦数据发送过程中，生产者对象重启，那么幂等性操作就会失效。那么此时就需要使用 Kafka 的事务功能来解决跨会话的幂等性操作。但是跨分区的幂等性操作是无法实现的。
+
+6. Consumer 消息重复或消息丢失的原因？
+
+   消费者为了防止意外情况下，重启之后不知道从哪里开始消费，所以会每 5s 时间自动保存偏移量。但是这种自动保存偏移量的操作是基于时间的，一旦未达到时间，消费者重启了，那么消费者就可能重复消费数据。
+
+   Kafka 提供自动保存偏移量的同时，也提供了手动保存偏移量的两种方式：一个是同步提交，一个是异步提交。本质上都是提交一批数据的最后一个偏移量的值，但是可能会出现偏移量提交完毕，但是拉取的数据未处理完毕，消费者重启了。那么此时有的数据就消费不到了，也就是所谓的消息丢失。
+
+7. Kafka 数据如何保证有序？
+
+   一般来说有序指的是生产有序、存储有序、消费有序。
+
+   **生产有序**
+
+   就是生产者对象需要给数据增加序列号用于标记数据的顺序，然后在服务端进行缓存数据的比对，一旦发现数据是乱序的，那么就需要让生产者客户端进行数据的排序，然后重新发送数据，保证数据的有序。不过这里的缓存数据的比对，最多只能有 5 条数据进行比对，所以生产者客户端需要配置参数，将在途请求缓冲区的请求队列数据设置为 5，否则数据依然可能乱序。因为服务端的缓存数据是以分区为单位的，所以这就要求生产者客户端将数据发送到一个分区中，如果数据发送到多个分区，是无法保证顺序的，这就是生产有序。
+
+   **存储有序**
+
+   指的是 Kafka 服务端获取到数据后会将数据顺序写入到日志文件，这样就保证了存储有序，当然也只能保证一个分区的存储有序。
+
+   **消费有序**
+
+   其实就是 Kafka 在存储数据时会给数据增加一个访问的偏移量值，那么消费者只能按照偏移量的方式顺序访问，并且一个分区的数据只能被消费者组中的一个消费者消费，按照偏移量方式的读取就不会出现乱序的情况。
+
+
+
