@@ -9578,11 +9578,241 @@ public class XxlJobConfig {
 
 ## 11、课程搜索
 
+**全文检索**
+
+全文检索是指**计算机索引程序**通过扫描文章中的**每一个词**，对每一个词**建立一个索引**，指明该词在文章中出现的**次数**和**位置**。当用户查询时，检索程序就根据事先建立的索引进行查找，并将查找的结果反馈给用户的**检索方式**。这个过程类似于通过字典中的检索字表查字的过程。
+
+**课程搜索流程**
+
+![search-process](https://image.elonlo.top/img/2024/07/25/66a24091df6c5.jpg)
+
+**Elasticsearch 和 MySQL 对应关系**
+
+| MySQL  | Elasticsearch | 说明                                                         |
+| ------ | ------------- | ------------------------------------------------------------ |
+| Table  | Index         | 索引（Index），就是文档的集合，类似数据库的表（Table）       |
+| Row    | Document      | 文档（Document），就是一条条的数据，类似数据库中的行（Row），文档都是 JSON 格式 |
+| Column | Field         | 字段（Filed），就是 JSON 文档中的字段，类似数据库中的列（Column） |
+| Schema | Mapping       | 映射（Mapping）是索引文档的约束，例如字段型类型约束，类似数据库中的表结构（Schema） |
+| SQL    | DSL           | DSL 是 elasticsearch 提供的 JSON 风格的请求语句，用来操作 elasticsearch，实现 CRUD |
+
 ### 11.1 创建课程搜索模块
 
-1. 添加依赖
-2. 添加本地配置
-3. 添加 `Nacos` 配置
+### 11.2 搭建 `Elasticsearch` 和 `Kibana`
+
+1. 创建 `elasticsearch.yml` 配置文件，添加以下内容
+
+   ```yaml
+   cluster.name: "myes-cluster"
+   network.host: 0.0.0.0
+   # es 内部使用端口
+   http.port: 9200
+   
+   # 关闭 xpack 安全功能，使用 HTTP
+   xpack.security.enabled: false
+   ```
+
+2. 创建 `kibana.yml` 和 `node.options` 配置文件，分别添加以下内容
+
+   ```yaml
+   server.name: kibana
+   server.host: "0.0.0.0"
+   # 需要与 es 内部使用端口一致
+   elasticsearch.hosts: [ "http://es:9200" ]
+   i18n.locale: "zh-CN"
+   xpack.monitoring.ui.container.elasticsearch.enabled: true
+   # 创建加密相关的 key,可以启动 kibana 之后进入容器中生成,也可以自己提前配置
+   xpack.encryptedSavedObjects.encryptionKey: 8bad2073ba447ea4051839d8a707f5a0
+   xpack.reporting.encryptionKey: 1063e29791e8d7e52d990a8a984d28a7
+   xpack.security.encryptionKey: 05f4c5a9e41164ae328411c562ec401b
+   # 禁用 ssl
+   server.ssl.enabled: false
+   ```
+
+   ```tex
+   ## Node command line options
+   ## See `node --help` and `node --v8-options` for available options
+   ## Please note you should specify one option per line
+   
+   ## max size of old space in megabytes
+   --max-old-space-size=512
+   
+   ## do not terminate process on unhandled promise rejection
+    --unhandled-rejections=warn
+   
+   ## restore < Node 16 default DNS lookup behavior
+   --dns-result-order=ipv4first
+   
+   # 不使用 openssl 必须关闭此项配置,否则无法启动
+   ## enable OpenSSL 3 legacy provider
+   # --openssl-legacy-provider
+   ```
+
+3. 创建 `docker-compose.yml` 配置文件，添加以下内容
+
+   ```yaml
+   version: "3.1"
+   # 服务配置
+   services:
+     es:
+       container_name: myes
+       image: elasticsearch:7.17.13
+       restart: unless-stopped
+       # 设置用户和组,用于文件权限
+       user: "1000:1000"
+       environment:
+         ES_JAVA_OPTS: "-Xms128m -Xmx512m"
+         TZ: "Asia/Shanghai"
+         discovery.type: "single-node"
+         ELASTIC_PASSWORD: "es123456"
+       ports:
+         - "29200:9200"
+         - "29300:9300"
+       volumes:
+         - $PWD/es/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+         - $PWD/es/data:/var/lib/elasticsearch/data
+         - $PWD/es/plugins:/usr/share/elasticsearch/plugins
+       networks:
+         - es_net
+   
+     kibana:
+       container_name: mykibana
+       image: kibana:7.17.13
+       restart: unless-stopped
+       user: "1000:1000"
+       environment:
+         TZ: "Asia/Shanghai"
+         I18N_LOCALE: "zh-CN"
+         ELASTICSEARCH_HOSTS: "http://es:9200"
+         ELASTICSEARCH_USERNAME: "guest"
+         ELASTICSEARCH_PASSWORD: "es123456"
+       ports:
+         - "25601:5601"
+       volumes:
+         - $PWD/kibana/config:/usr/share/kibana/config
+       networks:
+         - es_net
+       depends_on:
+         - es
+   
+   # 网络配置
+   networks:
+     es_net:
+       driver: bridge
+   ```
+
+### 11.3 项目添加依赖信息
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>xuecheng-plus</artifactId>
+        <groupId>com.yu.xuecheng</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>xuecheng-plus-search</artifactId>
+    <packaging>pom</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.yu.xuecheng</groupId>
+            <artifactId>xuecheng-plus-base</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>elasticsearch-rest-high-level-client</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.elasticsearch</groupId>
+            <artifactId>elasticsearch</artifactId>
+        </dependency>
+
+        <!-- Spring Boot 的 Spring Web MVC 集成 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        
+        <!-- Spring Boot 集成 Junit -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- Spring Boot 集成 log4j2 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-log4j2</artifactId>
+        </dependency>
+
+        <!-- Spring Boot 集成 swagger -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-spring-boot-starter</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+添加本地配置
+
+
+
+1. 添加 `Nacos` 配置 `search-dev.yaml`
+
+   ```yaml
+   server:
+     servlet:
+       context-path: /search
+     port: 63080
+   
+   elasticsearch:
+     hostlist: ip:29200 #多个结点中间用逗号分隔
+     course:
+       index: course-publish
+       source_fields: id,name,grade,mt,st,charge,pic,price,originalPrice,teachmode,validDays,createDate
+   ```
+
+   
 
 
 
