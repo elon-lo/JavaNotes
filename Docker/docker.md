@@ -2173,9 +2173,7 @@ Dockerfile是`用来构建Docker镜像`的文本文件，是由一条条构建�
 
 <span style="color:red;">注意：CMD和ENTRYPOINT同样作为容器启动时执行的命令，区别有以下几点：
      CMD的命令会被 docker run 的命令覆盖而ENTRYPOINT不会。 如使用CMD ["/bin/bash"]或ENTRYPOINT ["/bin/bash"]后，再使用docker run -ti image启动容器，它会自动进入容器内部的交互终端，如同使用docker run -ti image /bin/bash。
-     但是如果启动镜像的命令为docker run -ti image /bin/ps，使用CMD后面的命令就会被覆盖转而执行bin/ps命令，而ENTRYPOINT的则不会，而是会把docker run 后面的命令当做ENTRYPOINT执行命令的参数。
-
-</span>
+     但是如果启动镜像的命令为docker run -ti image /bin/ps，使用CMD后面的命令就会被覆盖转而执行bin/ps命令，而ENTRYPOINT的则不会，而是会把docker run 后面的命令当做ENTRYPOINT执行命令的参数。</span>
 
 
 
