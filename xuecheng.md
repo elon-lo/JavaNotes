@@ -9409,6 +9409,13 @@ public class CoursePublishServiceImpl extends ServiceImpl<CoursePublishMapper, C
 
 降级：当下游服务异常触发熔断后，上游服务就不再去调用异常的微服务，而是执行了降级逻辑处理，这个降级逻辑处理可以是本地的单独的一个方法。
 
+**Fallback 和 FallbackFactory 的区别**
+
+- **FallbackFactory**：可以捕获异常信息并返回默认降级结果
+- **Fallback**：不能捕获异常打印堆栈信息，不利于排查问题
+
+
+
 #### 10.6.1 定义回调类实现远程调用接口
 
 ```java
@@ -9596,9 +9603,7 @@ public class XxlJobConfig {
 | Schema | Mapping       | 映射（Mapping）是索引文档的约束，例如字段型类型约束，类似数据库中的表结构（Schema） |
 | SQL    | DSL           | DSL 是 elasticsearch 提供的 JSON 风格的请求语句，用来操作 elasticsearch，实现 CRUD |
 
-### 11.1 创建课程搜索模块
-
-### 11.2 搭建 `Elasticsearch` 和 `Kibana`
+### 11.1 搭建 `es` 和 `kibana`
 
 1. 创建 `elasticsearch.yml` 配置文件，添加以下内容
 
@@ -9701,103 +9706,128 @@ public class XxlJobConfig {
        driver: bridge
    ```
 
-### 11.3 项目添加依赖信息
+### 11.2 搭建课程搜索模块
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <parent>
-        <artifactId>xuecheng-plus</artifactId>
-        <groupId>com.yu.xuecheng</groupId>
-        <version>1.0-SNAPSHOT</version>
-    </parent>
-    <modelVersion>4.0.0</modelVersion>
+1. 项目添加依赖信息
 
-    <artifactId>xuecheng-plus-search</artifactId>
-    <packaging>pom</packaging>
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-search</artifactId>
+       <packaging>pom</packaging>
+   
+       <dependencies>
+           <dependency>
+               <groupId>com.yu.xuecheng</groupId>
+               <artifactId>xuecheng-plus-base</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+           
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>org.elasticsearch.client</groupId>
+               <artifactId>elasticsearch-rest-high-level-client</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.elasticsearch</groupId>
+               <artifactId>elasticsearch</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 的 Spring Web MVC 集成 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-validation</artifactId>
+           </dependency>
+           <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+           
+           <!-- Spring Boot 集成 Junit -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+           
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 集成 swagger -->
+           <dependency>
+               <groupId>com.github.xiaoymin</groupId>
+               <artifactId>knife4j-spring-boot-starter</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
 
-    <dependencies>
-        <dependency>
-            <groupId>com.yu.xuecheng</groupId>
-            <artifactId>xuecheng-plus-base</artifactId>
-            <version>1.0-SNAPSHOT</version>
-        </dependency>
-        
-        <dependency>
-            <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>org.elasticsearch.client</groupId>
-            <artifactId>elasticsearch-rest-high-level-client</artifactId>
-        </dependency>
+2. 添加项目配置
 
-        <dependency>
-            <groupId>org.elasticsearch</groupId>
-            <artifactId>elasticsearch</artifactId>
-        </dependency>
+   ```yaml
+   spring:
+     application:
+       name: search
+   
+     cloud:
+       nacos:
+         server-addr: ip:19948
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+   
+     profiles:
+       active: dev
+   ```
 
-        <!-- Spring Boot 的 Spring Web MVC 集成 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <!-- 排除 Spring Boot 依赖的日志包冲突 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-logging</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        
-        <!-- Spring Boot 集成 Junit -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        
-        <!-- Spring Boot 集成 log4j2 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-log4j2</artifactId>
-        </dependency>
-
-        <!-- Spring Boot 集成 swagger -->
-        <dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-spring-boot-starter</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
-    </dependencies>
-</project>
-```
-
-添加本地配置
-
-
-
-1. 添加 `Nacos` 配置 `search-dev.yaml`
+3. 添加 `Nacos` 配置 `search-dev.yaml`
 
    ```yaml
    server:
@@ -9812,7 +9842,707 @@ public class XxlJobConfig {
        source_fields: id,name,grade,mt,st,charge,pic,price,originalPrice,teachmode,validDays,createDate
    ```
 
+4. 添加 elasticsearch 配置类
+
+   ```java
+   @Configuration
+   public class ElasticsearchConfig {
    
+   	private final SearchProperties searchProperties;
+   
+   	public ElasticsearchConfig(SearchProperties searchProperties) {
+   		this.searchProperties = searchProperties;
+   	}
+   
+   	@Bean
+   	public RestHighLevelClient restHighLevelClient() {
+   		// 解析hostlist配置信息
+   		String[] split = searchProperties.getHostlist().split(",");
+   
+   		// 创建HttpHost数组,其中存放es主机和端口的配置信息
+   		HttpHost[] httpHostArray = new HttpHost[split.length];
+   		for (int i = 0; i < split.length; i++) {
+   			String item = split[i];
+   			httpHostArray[i] = new HttpHost(item.split(":")[0],
+   					Integer.parseInt(item.split(":")[1]), "http");
+   		}
+   
+   		// 创建RestHighLevelClient客户端
+   		return new RestHighLevelClient(RestClient.builder(httpHostArray));
+   	}
+   
+   }
+   ```
+
+5. 添加 elasticsearch 属性类
+
+   ```java
+   @Data
+   @Component
+   @ConfigurationProperties(prefix = SearchProperties.SEARCH_PREFIX)
+   public class SearchProperties {
+   
+   	public static final String SEARCH_PREFIX = "elasticsearch";
+   
+   	/**
+   	 * es 节点集合
+   	 */
+   	private String hostlist;
+   
+   	/**
+   	 * 课程索引配置
+   	 */
+   	private Course course;
+   
+   	@Data
+   	public static class Course {
+   
+   		/**
+   		 * 索引名
+   		 */
+   		private String index;
+   
+   		/**
+   		 * 源字段
+   		 */
+   		private String sourceFields;
+   	}
+   }
+   ```
+
+6. 添加课程索引实体类
+
+   ```java
+   @Data
+   public class CourseIndex implements Serializable {
+   
+   	private static final long serialVersionUID = 1L;
+   
+   	/**
+   	 * 主键
+   	 */
+   	private Long id;
+   
+   	/**
+   	 * 机构ID
+   	 */
+   	private Long companyId;
+   
+   	/**
+   	 * 公司名称
+   	 */
+   	private String companyName;
+   
+   	/**
+   	 * 课程名称
+   	 */
+   	private String name;
+   
+   	/**
+   	 * 适用人群
+   	 */
+   	private String users;
+   
+   	/**
+   	 * 标签
+   	 */
+   	private String tags;
+   
+   	/**
+   	 * 大分类
+   	 */
+   	private String mt;
+   
+   	/**
+   	 * 大分类名称
+   	 */
+   	private String mtName;
+   
+   	/**
+   	 * 小分类
+   	 */
+   	private String st;
+   
+   	/**
+   	 * 小分类名称
+   	 */
+   	private String stName;
+   
+   	/**
+   	 * 课程等级
+   	 */
+   	private String grade;
+   
+   	/**
+   	 * 教育模式
+   	 */
+   	private String teachmode;
+   	/**
+   	 * 课程图片
+   	 */
+   	private String pic;
+   
+   	/**
+   	 * 课程介绍
+   	 */
+   	private String description;
+   
+   	/**
+   	 * 发布时间
+   	 */
+   	@JSONField(format = "yyyy-MM-dd HH:mm:ss")
+   	@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+   	private LocalDateTime createDate;
+   
+   	/**
+   	 * 状态
+   	 */
+   	private String status;
+   
+   	/**
+   	 * 备注
+   	 */
+   	private String remark;
+   
+   	/**
+   	 * 收费规则,对应数据字典--203
+   	 */
+   	private String charge;
+   
+   	/**
+   	 * 现价
+   	 */
+   	private Float price;
+   	/**
+   	 * 原价
+   	 */
+   	private Float originalPrice;
+   
+   	/**
+   	 * 课程有效期天数
+   	 */
+   	private Integer validDays;
+   }
+   ```
+
+7. 添加数据传输对象 DTO
+
+   ```java
+   @Data
+   public class SearchCourseParamDTO implements Serializable {
+   
+   	private static final long serialVersionUID = 1L;
+   
+   	/**
+   	 * 关键字
+   	 */
+   	private String keywords;
+   
+   	/**
+   	 * 大分类
+   	 */
+   	private String mt;
+   
+   	/**
+   	 * 小分类
+   	 */
+   	private String st;
+   
+   	/**
+   	 * 难度等级
+   	 */
+   	private String grade;
+   }
+   ```
+
+   ```java
+   @EqualsAndHashCode(callSuper = true)
+   @Data
+   public class SearchPageResultDTO<T> extends PageResult<T> implements Serializable {
+   
+   	private static final long serialVersionUID = 1L;
+   
+   	/**
+   	 * 大分类列表
+   	 */
+   	private List<String> mtList;
+   
+   	/**
+   	 * 小分类列表
+   	 */
+   	private List<String> stList;
+   
+   	public SearchPageResultDTO(List<T> items, long counts, long page, long pageSize) {
+   		super(items, counts, page, pageSize);
+   	}
+   }
+   ```
+
+8. 课程搜索
+
+   ```java
+   public interface CourseSearchService {
+   
+   
+   	/**
+   	 * 搜索课程列表
+   	 *
+   	 * @param pageParams           分页参数
+   	 * @param searchCourseParamDto 搜索条件
+   	 */
+   	SearchPageResultDTO<CourseIndex> queryCoursePubIndex(PageParams pageParams, SearchCourseParamDTO searchCourseParamDto);
+   
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class CourseSearchServiceImpl implements CourseSearchService {
+   
+   	private final SearchProperties searchProperties;
+   
+   	private final RestHighLevelClient client;
+   
+   	public CourseSearchServiceImpl(SearchProperties searchProperties, RestHighLevelClient client) {
+   		this.searchProperties = searchProperties;
+   		this.client = client;
+   	}
+   
+   	/**
+   	 * 搜索课程列表
+   	 */
+   	@Override
+   	public SearchPageResultDTO<CourseIndex> queryCoursePubIndex(PageParams pageParams, SearchCourseParamDTO courseSearchParam) {
+   
+   		// 设置索引
+   		SearchRequest searchRequest = new SearchRequest(searchProperties.getCourse().getIndex());
+   
+   		SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+   		BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+   
+   		// source源字段过虑
+   		String[] sourceFieldsArray = searchProperties.getCourse().getSourceFields().split(",");
+   		searchSourceBuilder.fetchSource(sourceFieldsArray, new String[]{});
+   
+   		if (courseSearchParam == null) {
+   			courseSearchParam = new SearchCourseParamDTO();
+   		}
+   
+   		// 关键字
+   		if (StringUtils.isNotEmpty(courseSearchParam.getKeywords())) {
+   			// 匹配关键字
+   			MultiMatchQueryBuilder multiMatchQueryBuilder = QueryBuilders.multiMatchQuery(courseSearchParam.getKeywords(), "name", "description");
+   			// 设置匹配占比
+   			multiMatchQueryBuilder.minimumShouldMatch("70%");
+   			// 提升另个字段的Boost值
+   			multiMatchQueryBuilder.field("name", 10);
+   			boolQueryBuilder.must(multiMatchQueryBuilder);
+   		}
+   		// 过滤
+   		if (StringUtils.isNotEmpty(courseSearchParam.getMt())) {
+   			boolQueryBuilder.filter(QueryBuilders.termQuery("mtName", courseSearchParam.getMt()));
+   		}
+   		if (StringUtils.isNotEmpty(courseSearchParam.getSt())) {
+   			boolQueryBuilder.filter(QueryBuilders.termQuery("stName", courseSearchParam.getSt()));
+   		}
+   		if (StringUtils.isNotEmpty(courseSearchParam.getGrade())) {
+   			boolQueryBuilder.filter(QueryBuilders.termQuery("grade", courseSearchParam.getGrade()));
+   		}
+   		// 分页
+   		long pageNo = pageParams.getPageNo();
+   		long pageSize = pageParams.getPageSize();
+   
+   		int start = (int) ((pageNo - 1) * pageSize);
+   		searchSourceBuilder.from(start);
+   		searchSourceBuilder.size(Math.toIntExact(pageSize));
+   
+   		// 布尔查询
+   		searchSourceBuilder.query(boolQueryBuilder);
+   
+   		// 高亮设置
+   		HighlightBuilder highlightBuilder = new HighlightBuilder();
+   		highlightBuilder.preTags("<font class='eslight'>");
+   		highlightBuilder.postTags("</font>");
+   
+   		// 设置高亮字段
+   		highlightBuilder.fields().add(new HighlightBuilder.Field("name"));
+   		searchSourceBuilder.highlighter(highlightBuilder);
+   
+   		// 请求搜索
+   		searchRequest.source(searchSourceBuilder);
+   
+   		// 聚合设置
+   		buildAggregation(searchRequest);
+   		SearchResponse searchResponse = null;
+   		try {
+   			searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+   		} catch (IOException e) {
+   			e.printStackTrace();
+   			log.error("课程搜索异常：{}", e.getMessage());
+   			return new SearchPageResultDTO<CourseIndex>(new ArrayList(), 0, 0, 0);
+   		}
+   
+   		// 结果集处理
+   		SearchHits hits = searchResponse.getHits();
+   		SearchHit[] searchHits = hits.getHits();
+   
+   		// 记录总数
+   		TotalHits totalHits = hits.getTotalHits();
+   
+   		// 数据列表
+   		List<CourseIndex> list = new ArrayList<>();
+   
+   		for (SearchHit hit : searchHits) {
+   
+   			String sourceAsString = hit.getSourceAsString();
+   			CourseIndex courseIndex = JSON.parseObject(sourceAsString, CourseIndex.class);
+   
+   			// 取出source
+   			Map<String, Object> sourceAsMap = hit.getSourceAsMap();
+   
+   			// 课程id
+   			Long id = courseIndex.getId();
+   
+   			// 取出名称
+   			String name = courseIndex.getName();
+   
+   			// 取出高亮字段内容
+   			Map<String, HighlightField> highlightFields = hit.getHighlightFields();
+   			if (highlightFields != null) {
+   				HighlightField nameField = highlightFields.get("name");
+   				if (nameField != null) {
+   					Text[] fragments = nameField.getFragments();
+   					StringBuilder sb = new StringBuilder();
+   					for (Text str : fragments) {
+   						sb.append(str.string());
+   					}
+   					name = sb.toString();
+   
+   				}
+   			}
+   			courseIndex.setId(id);
+   			courseIndex.setName(name);
+   
+   			list.add(courseIndex);
+   
+   		}
+   		SearchPageResultDTO<CourseIndex> pageResult = new SearchPageResultDTO<>(list, totalHits.value, pageNo, pageSize);
+   
+   		// 获取聚合结果
+   		List<String> mtList = getAggregation(searchResponse.getAggregations(), "mtAgg");
+   		List<String> stList = getAggregation(searchResponse.getAggregations(), "stAgg");
+   
+   		pageResult.setMtList(mtList);
+   		pageResult.setStList(stList);
+   
+   		return pageResult;
+   	}
+   
+   
+   	private void buildAggregation(SearchRequest request) {
+   		request.source().aggregation(AggregationBuilders
+   				.terms("mtAgg")
+   				.field("mtName")
+   				.size(100)
+   		);
+   		request.source().aggregation(AggregationBuilders
+   				.terms("stAgg")
+   				.field("stName")
+   				.size(100)
+   		);
+   
+   	}
+   
+   	private List<String> getAggregation(Aggregations aggregations, String aggName) {
+   		// 4.1.根据聚合名称获取聚合结果
+   		Terms brandTerms = aggregations.get(aggName);
+   
+   		// 4.2.获取buckets
+   		List<? extends Terms.Bucket> buckets = brandTerms.getBuckets();
+   
+   		// 4.3.遍历
+   		List<String> brandList = new ArrayList<>();
+   		for (Terms.Bucket bucket : buckets) {
+   			// 4.4.获取key
+   			String key = bucket.getKeyAsString();
+   			brandList.add(key);
+   		}
+   		return brandList;
+   	}
+   }
+   ```
+
+9. 课程索引
+
+   ```java
+   public interface IndexService {
+   
+   	/**
+   	 * 添加索引
+   	 *
+   	 * @param indexName 索引名称
+   	 * @param id        主键
+   	 * @param object    索引对象
+   	 * @return Boolean true表示成功,false失败
+   	 */
+   	Boolean addCourseIndex(String indexName, String id, Object object);
+   
+   
+   	/**
+   	 * 更新索引
+   	 *
+   	 * @param indexName 索引名称
+   	 * @param id        主键
+   	 * @param object    索引对象
+   	 * @return Boolean true表示成功,false失败
+   	 */
+   	Boolean updateCourseIndex(String indexName, String id, Object object);
+   
+   	/**
+   	 * 删除索引
+   	 *
+   	 * @param indexName 索引名称
+   	 * @param id        主键
+   	 * @return java.lang.Boolean
+   	 */
+   	Boolean deleteCourseIndex(String indexName, String id);
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class IndexServiceImpl implements IndexService {
+   
+   	private final RestHighLevelClient client;
+   
+   	@Autowired
+   	public IndexServiceImpl(RestHighLevelClient client) {
+   		this.client = client;
+   	}
+   
+   	/**
+   	 * 添加索引
+   	 */
+   	@Override
+   	public Boolean addCourseIndex(String indexName, String id, Object object) {
+   		String jsonString = JSON.toJSONString(object);
+   		IndexRequest indexRequest = new IndexRequest(indexName).id(id);
+   
+   		// 指定索引文档内容
+   		indexRequest.source(jsonString, XContentType.JSON);
+   
+   		// 索引响应对象
+   		IndexResponse indexResponse = null;
+   		try {
+   			indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
+   		} catch (IOException e) {
+   			log.error("添加索引出错:{}", e.getMessage());
+   			e.printStackTrace();
+   			throw new BusinessException("添加索引出错");
+   		}
+   		String name = indexResponse.getResult().name();
+   		System.out.println(name);
+   		return name.equalsIgnoreCase("created") || name.equalsIgnoreCase("updated");
+   
+   	}
+   
+   	/**
+   	 * 更新索引
+   	 */
+   	@Override
+   	public Boolean updateCourseIndex(String indexName, String id, Object object) {
+   
+   		String jsonString = JSON.toJSONString(object);
+   		UpdateRequest updateRequest = new UpdateRequest(indexName, id);
+   		updateRequest.doc(jsonString, XContentType.JSON);
+   		UpdateResponse updateResponse = null;
+   		try {
+   			updateResponse = client.update(updateRequest, RequestOptions.DEFAULT);
+   		} catch (IOException e) {
+   			log.error("更新索引出错:{}", e.getMessage());
+   			e.printStackTrace();
+   			throw new BusinessException("更新索引出错");
+   		}
+   		DocWriteResponse.Result result = updateResponse.getResult();
+   		return result.name().equalsIgnoreCase("updated");
+   
+   	}
+   
+   	/**
+   	 * 删除索引
+   	 */
+   	@Override
+   	public Boolean deleteCourseIndex(String indexName, String id) {
+   
+   		// 删除索引请求对象
+   		DeleteRequest deleteRequest = new DeleteRequest(indexName, id);
+   
+   		// 响应对象
+   		DeleteResponse deleteResponse = null;
+   		try {
+   			deleteResponse = client.delete(deleteRequest, RequestOptions.DEFAULT);
+   		} catch (IOException e) {
+   			log.error("删除索引出错:{}", e.getMessage());
+   			e.printStackTrace();
+   			throw new BusinessException("删除索引出错");
+   		}
+   
+   		// 获取响应结果
+   		DocWriteResponse.Result result = deleteResponse.getResult();
+   		return result.name().equalsIgnoreCase("deleted");
+   	}
+   }
+   ```
+
+### 11.3 索引数据同步方案
+
+#### 11.3.1 实时性要求高
+
+1. 同步调用，在向 MySQL 写入数据后远程调用搜索服务的接口写入索引，方法简单但是代码耦合性较高
+2. 可以使用中间件 `canal` 解决耦合性的问题，`canal` 主要用途是基于 MySQL 数据库的增量日志解析，并能提供增量数据订阅和消费，实现将 MySQL 数据同步到消息队列、Elasticsearch、其他数据库等，应用场景十分丰富。
+
+`canal` 数据同步流程如下：
+
+- canal 模拟MySQL slave 的交互协议，伪装自己为 MySQL slave，向 MySQL master 发送 dump 协议
+- MySQL master 收到 dump 请求，开始推送 binary log（binlog）给 slave（即 canal）
+- canal 解析 binary log 对象（原始为字节流）
+
+#### 11.3.2 实时性要求不高
+
+当索引同步的实时性要求不高时可用的技术比较多，比如：**MQ、Logstash、任务调度**等。
+
+**MQ**：向 MySQL 写数据的时候同时向 MQ 写入消息，搜索服务监听 MQ，收到消息后写入索引。使用 MQ 的优势是代码解耦，但是需要处理消息可靠性有一定的技术成本，做到消息可靠性需要做到生产者投递成功、消息持久化以及消费者消费成功三个方面，另外还要做好消息幂等性问题
+
+**Logstash**：开源实时日志分析平台 ELK 包括 Elasticsearch、Kibana、Logstash，Logstash 负责收集、解析和转换日志信息，可以实现 MySQL 与 Elasticsearch 之间的数据同步
+
+**任务调度**：向 MySQL 写数据的时候记录修改记录，开启一个定时任务根据修改记录将数据同步到 Elasticsearch
+
+### 11.4 定义远程调用接口
+
+1. 在 `xuecheng-plus-content-model` 模块中添加 `CourseIndex` 类
+
+2. 在 `xuecheng-plus-content-service` 模块中添加远程调用接口和降级实现
+
+   ```java
+   @FeignClient(value = "search", fallbackFactory = SearchServiceClientFallbackFactory.class)
+   public interface SearchServiceClient {
+   
+   	/**
+   	 * 添加索引
+   	 */
+   	@PostMapping("/search/index/course")
+   	Boolean add(@RequestBody CourseIndex courseIndex);
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Component
+   public class SearchServiceClientFallbackFactory implements FallbackFactory<SearchServiceClient> {
+   
+   	@Override
+   	public SearchServiceClient create(Throwable cause) {
+   		return courseIndex -> {
+   			log.error("添加课程索引发生熔断 ,课程信息: {}, 错误信息: {}", courseIndex, cause.toString(), cause);
+   			return false;
+   		};
+   	}
+   }
+   ```
+
+### 11.5 添加课程发布定时任务
+
+1. `xuecheng-plus-content-service` 中添加依赖信息
+
+   ```xml
+   <dependency>
+       <groupId>com.xuxueli</groupId>
+       <artifactId>xxl-job-core</artifactId>
+   </dependency>
+   ```
+
+2. `CoursePublishJobHandler` 类中添加课程发布定时任务调度方法
+
+   ```java
+   /**
+    * 课程发布定时任务
+    */
+   @XxlJob("coursePublishTask")
+   public void coursePublishTask() {
+       // 分片参数
+       int shardIndex = XxlJobHelper.getShardIndex();
+       int shardTotal = XxlJobHelper.getShardTotal();
+   
+       // 调用抽象类方法执行任务
+       process(shardIndex, shardTotal, "course_publish", 30, 60);
+   }
+   ```
+
+### 11.6 完善 `es` 写入索引方法
+
+```java
+@Slf4j
+@Component
+public class CoursePublishJobHandler extends MessageProcessAbstract {
+
+    private final CoursePublishMapper coursePublishMapper;
+
+    private final SearchServiceClient searchServiceClient;
+
+    @Autowired
+    public CoursePublishJobHandler(CoursePublishMapper coursePublishMapper, SearchServiceClient searchServiceClient) {
+        this.coursePublishMapper = coursePublishMapper;
+        this.searchServiceClient = searchServiceClient;
+    }
+
+    /**
+     * 向elasticsearch写入课程索引数据
+     */
+    private void writeCourseESData(MqMessage mqMessage, long courseId) {
+        // 获取消息id
+        String messageId = mqMessage.getId();
+
+        IMqMessageService mqMessageService = this.getMqMessageService();
+
+        // 第二阶段任务是否完成 & 直接返回,否则继续完成第二阶段任务
+        int stageTwo = mqMessageService.getStageTwo(Long.parseLong(messageId));
+
+        if (stageTwo > 0) {
+            log.debug("向elasticsearch写入课程索引数据任务已经完成,无需处理......");
+            return;
+        }
+
+        // 查询课程信息,调用搜索服务添加索引接口
+        CoursePublish coursePublish = coursePublishMapper.selectById(courseId);
+
+        CourseIndex courseIndex = new CourseIndex();
+        BeanUtils.copyProperties(coursePublish, courseIndex);
+
+        Boolean add = searchServiceClient.add(courseIndex);
+        if (!add) {
+            throw new BusinessException("远程调用搜索服务添加课程索引信息失败!");
+        }
+
+        mqMessageService.completedStageTwo(Long.parseLong(messageId));
+    }
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
