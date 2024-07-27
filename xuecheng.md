@@ -9708,7 +9708,23 @@ public class XxlJobConfig {
 
 ### 11.2 搭建课程搜索模块
 
-1. 项目添加依赖信息
+1. 创建课程搜索模块
+
+2. 父工程中添加模块信息
+
+   ```xml
+   <modules>
+       <module>xuecheng-plus-base</module>
+       <module>xuecheng-plus-content</module>
+       <module>xuecheng-plus-system</module>
+       <module>xuecheng-plus-media</module>
+       <module>xuecheng-plus-message</module>
+       <module>xuecheng-plus-gateway</module>
+       <module>xuecheng-plus-search</module>
+   </modules>
+   ```
+
+3. 项目添加依赖信息
 
    ```xml
    <?xml version="1.0" encoding="UTF-8"?>
@@ -9800,7 +9816,7 @@ public class XxlJobConfig {
    </project>
    ```
 
-2. 添加项目配置
+4. 添加项目配置
 
    ```yaml
    spring:
@@ -9827,7 +9843,7 @@ public class XxlJobConfig {
        active: dev
    ```
 
-3. 添加 `Nacos` 配置 `search-dev.yaml`
+5. 添加 `Nacos` 配置 `search-dev.yaml`
 
    ```yaml
    server:
@@ -9842,7 +9858,7 @@ public class XxlJobConfig {
        source_fields: id,name,grade,mt,st,charge,pic,price,originalPrice,teachmode,validDays,createDate
    ```
 
-4. 添加 elasticsearch 配置类
+6. 添加 elasticsearch 配置类
 
    ```java
    @Configuration
@@ -9874,7 +9890,7 @@ public class XxlJobConfig {
    }
    ```
 
-5. 添加 elasticsearch 属性类
+7. 添加 elasticsearch 属性类
 
    ```java
    @Data
@@ -9910,7 +9926,7 @@ public class XxlJobConfig {
    }
    ```
 
-6. 添加课程索引实体类
+8. 添加课程索引实体类
 
    ```java
    @Data
@@ -10025,7 +10041,7 @@ public class XxlJobConfig {
    }
    ```
 
-7. 添加数据传输对象 DTO
+9. 添加数据传输对象 DTO
 
    ```java
    @Data
@@ -10078,7 +10094,7 @@ public class XxlJobConfig {
    }
    ```
 
-8. 课程搜索
+10. 课程搜索
 
    ```java
    public interface CourseSearchService {
@@ -10273,128 +10289,128 @@ public class XxlJobConfig {
    }
    ```
 
-9. 课程索引
+11. 课程索引
 
-   ```java
-   public interface IndexService {
-   
-   	/**
-   	 * 添加索引
-   	 *
-   	 * @param indexName 索引名称
-   	 * @param id        主键
-   	 * @param object    索引对象
-   	 * @return Boolean true表示成功,false失败
-   	 */
-   	Boolean addCourseIndex(String indexName, String id, Object object);
-   
-   
-   	/**
-   	 * 更新索引
-   	 *
-   	 * @param indexName 索引名称
-   	 * @param id        主键
-   	 * @param object    索引对象
-   	 * @return Boolean true表示成功,false失败
-   	 */
-   	Boolean updateCourseIndex(String indexName, String id, Object object);
-   
-   	/**
-   	 * 删除索引
-   	 *
-   	 * @param indexName 索引名称
-   	 * @param id        主键
-   	 * @return java.lang.Boolean
-   	 */
-   	Boolean deleteCourseIndex(String indexName, String id);
-   }
-   ```
+    ```java
+    public interface IndexService {
+    
+    	/**
+    	 * 添加索引
+    	 *
+    	 * @param indexName 索引名称
+    	 * @param id        主键
+    	 * @param object    索引对象
+    	 * @return Boolean true表示成功,false失败
+    	 */
+    	Boolean addCourseIndex(String indexName, String id, Object object);
+    
+    
+    	/**
+    	 * 更新索引
+    	 *
+    	 * @param indexName 索引名称
+    	 * @param id        主键
+    	 * @param object    索引对象
+    	 * @return Boolean true表示成功,false失败
+    	 */
+    	Boolean updateCourseIndex(String indexName, String id, Object object);
+    
+    	/**
+    	 * 删除索引
+    	 *
+    	 * @param indexName 索引名称
+    	 * @param id        主键
+    	 * @return java.lang.Boolean
+    	 */
+    	Boolean deleteCourseIndex(String indexName, String id);
+    }
+    ```
 
-   ```java
-   @Slf4j
-   @Service
-   public class IndexServiceImpl implements IndexService {
-   
-   	private final RestHighLevelClient client;
-   
-   	@Autowired
-   	public IndexServiceImpl(RestHighLevelClient client) {
-   		this.client = client;
-   	}
-   
-   	/**
-   	 * 添加索引
-   	 */
-   	@Override
-   	public Boolean addCourseIndex(String indexName, String id, Object object) {
-   		String jsonString = JSON.toJSONString(object);
-   		IndexRequest indexRequest = new IndexRequest(indexName).id(id);
-   
-   		// 指定索引文档内容
-   		indexRequest.source(jsonString, XContentType.JSON);
-   
-   		// 索引响应对象
-   		IndexResponse indexResponse = null;
-   		try {
-   			indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
-   		} catch (IOException e) {
-   			log.error("添加索引出错:{}", e.getMessage());
-   			e.printStackTrace();
-   			throw new BusinessException("添加索引出错");
-   		}
-   		String name = indexResponse.getResult().name();
-   		System.out.println(name);
-   		return name.equalsIgnoreCase("created") || name.equalsIgnoreCase("updated");
-   
-   	}
-   
-   	/**
-   	 * 更新索引
-   	 */
-   	@Override
-   	public Boolean updateCourseIndex(String indexName, String id, Object object) {
-   
-   		String jsonString = JSON.toJSONString(object);
-   		UpdateRequest updateRequest = new UpdateRequest(indexName, id);
-   		updateRequest.doc(jsonString, XContentType.JSON);
-   		UpdateResponse updateResponse = null;
-   		try {
-   			updateResponse = client.update(updateRequest, RequestOptions.DEFAULT);
-   		} catch (IOException e) {
-   			log.error("更新索引出错:{}", e.getMessage());
-   			e.printStackTrace();
-   			throw new BusinessException("更新索引出错");
-   		}
-   		DocWriteResponse.Result result = updateResponse.getResult();
-   		return result.name().equalsIgnoreCase("updated");
-   
-   	}
-   
-   	/**
-   	 * 删除索引
-   	 */
-   	@Override
-   	public Boolean deleteCourseIndex(String indexName, String id) {
-   
-   		// 删除索引请求对象
-   		DeleteRequest deleteRequest = new DeleteRequest(indexName, id);
-   
-   		// 响应对象
-   		DeleteResponse deleteResponse = null;
-   		try {
-   			deleteResponse = client.delete(deleteRequest, RequestOptions.DEFAULT);
-   		} catch (IOException e) {
-   			log.error("删除索引出错:{}", e.getMessage());
-   			e.printStackTrace();
-   			throw new BusinessException("删除索引出错");
-   		}
-   
-   		// 获取响应结果
-   		DocWriteResponse.Result result = deleteResponse.getResult();
-   		return result.name().equalsIgnoreCase("deleted");
-   	}
-   }
-   ```
+    ```java
+    @Slf4j
+    @Service
+    public class IndexServiceImpl implements IndexService {
+    
+    	private final RestHighLevelClient client;
+    
+    	@Autowired
+    	public IndexServiceImpl(RestHighLevelClient client) {
+    		this.client = client;
+    	}
+    
+    	/**
+    	 * 添加索引
+    	 */
+    	@Override
+    	public Boolean addCourseIndex(String indexName, String id, Object object) {
+    		String jsonString = JSON.toJSONString(object);
+    		IndexRequest indexRequest = new IndexRequest(indexName).id(id);
+    
+    		// 指定索引文档内容
+    		indexRequest.source(jsonString, XContentType.JSON);
+    
+    		// 索引响应对象
+    		IndexResponse indexResponse = null;
+    		try {
+    			indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
+    		} catch (IOException e) {
+    			log.error("添加索引出错:{}", e.getMessage());
+    			e.printStackTrace();
+    			throw new BusinessException("添加索引出错");
+    		}
+    		String name = indexResponse.getResult().name();
+    		System.out.println(name);
+    		return name.equalsIgnoreCase("created") || name.equalsIgnoreCase("updated");
+    
+    	}
+    
+    	/**
+    	 * 更新索引
+    	 */
+    	@Override
+    	public Boolean updateCourseIndex(String indexName, String id, Object object) {
+    
+    		String jsonString = JSON.toJSONString(object);
+    		UpdateRequest updateRequest = new UpdateRequest(indexName, id);
+    		updateRequest.doc(jsonString, XContentType.JSON);
+    		UpdateResponse updateResponse = null;
+    		try {
+    			updateResponse = client.update(updateRequest, RequestOptions.DEFAULT);
+    		} catch (IOException e) {
+    			log.error("更新索引出错:{}", e.getMessage());
+    			e.printStackTrace();
+    			throw new BusinessException("更新索引出错");
+    		}
+    		DocWriteResponse.Result result = updateResponse.getResult();
+    		return result.name().equalsIgnoreCase("updated");
+    
+    	}
+    
+    	/**
+    	 * 删除索引
+    	 */
+    	@Override
+    	public Boolean deleteCourseIndex(String indexName, String id) {
+    
+    		// 删除索引请求对象
+    		DeleteRequest deleteRequest = new DeleteRequest(indexName, id);
+    
+    		// 响应对象
+    		DeleteResponse deleteResponse = null;
+    		try {
+    			deleteResponse = client.delete(deleteRequest, RequestOptions.DEFAULT);
+    		} catch (IOException e) {
+    			log.error("删除索引出错:{}", e.getMessage());
+    			e.printStackTrace();
+    			throw new BusinessException("删除索引出错");
+    		}
+    
+    		// 获取响应结果
+    		DocWriteResponse.Result result = deleteResponse.getResult();
+    		return result.name().equalsIgnoreCase("deleted");
+    	}
+    }
+    ```
 
 ### 11.3 索引数据同步方案
 
@@ -10529,6 +10545,493 @@ public class CoursePublishJobHandler extends MessageProcessAbstract {
     }
 }
 ```
+
+## 12、认证授权
+
+### 12.1 搭建认证授权模块
+
+1. 创建 `xc-users` 数据库并添加表和数据
+
+   ![image-20240727134847066](https://image.elonlo.top/img/2024/07/27/66a48a4010b28.png)
+
+   ![image-20240727134915218](https://image.elonlo.top/img/2024/07/27/66a48a5c1d3b7.png)
+
+   ![image-20240727134943213](https://image.elonlo.top/img/2024/07/27/66a48a785ddf7.png)
+
+2. 创建认证授权模块
+
+3. 父工程中添加模块信息
+
+   ```xml
+   <modules>
+       <module>xuecheng-plus-base</module>
+       <module>xuecheng-plus-content</module>
+       <module>xuecheng-plus-system</module>
+       <module>xuecheng-plus-media</module>
+       <module>xuecheng-plus-message</module>
+       <module>xuecheng-plus-gateway</module>
+       <module>xuecheng-plus-search</module>
+       <module>xuecheng-plus-auth</module>
+   </modules>
+   ```
+
+4. 添加项目配置信息
+
+   ```yaml
+   spring:
+     application:
+       name: auth-service
+   
+     cloud:
+       nacos:
+         server-addr: ip:19948
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+   
+     profiles:
+       active: dev
+   ```
+
+5. 在 `nacos` 中添加配置
+
+   ```yaml
+   server:
+     servlet:
+       context-path: /auth
+     port: 63070
+   spring:
+     datasource:
+       driver-class-name: com.mysql.cj.jdbc.Driver
+       url: jdbc:mysql://ip:29502/xuecheng-users?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+       username: root
+       password: yu993844
+   ```
+
+6. 添加项目依赖信息
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+       
+       <artifactId>xuecheng-plus-auth</artifactId>
+   
+   	<properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+           <myOkhttp.version>4.8.1</myOkhttp.version>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-openfeign</artifactId>
+           </dependency>
+           
+           <!-- Spring Boot 的 Spring Web MVC 集成 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-validation</artifactId>
+           </dependency>
+           
+           <!-- MySQL 驱动 -->
+           <dependency>
+               <groupId>mysql</groupId>
+               <artifactId>mysql-connector-java</artifactId>
+               <scope>runtime</scope>
+           </dependency>
+   
+           <!-- mybatis plus的依赖 -->
+           <dependency>
+               <groupId>com.baomidou</groupId>
+               <artifactId>mybatis-plus-boot-starter</artifactId>
+           </dependency>
+           
+           <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+           
+           <!-- Spring Boot 集成 Junit -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+           
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+   
+           <!-- Spring Boot 集成 swagger -->
+           <dependency>
+               <groupId>com.github.xiaoymin</groupId>
+               <artifactId>knife4j-spring-boot-starter</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>com.alibaba</groupId>
+               <artifactId>fastjson</artifactId>
+           </dependency>
+           
+           <dependency>
+               <groupId>com.squareup.okhttp3</groupId>
+               <artifactId>okhttp</artifactId>
+               <version>${myOkhttp.version}</version>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+### 12.2 整合 Spring Security
+
+1. 添加依赖信息
+
+   ```xml
+   <!-- 整合 spring security -->
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-security</artifactId>
+   </dependency>
+   ```
+
+2. 添加安全管理配置类
+
+   ```java
+   @EnableWebSecurity
+   @EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+   public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+   
+   	/**
+   	 * 配置用户信息服务
+   	 */
+   	@Bean
+   	public UserDetailsService userDetailsService() {
+   		// 这里配置用户信息,这里暂时使用这种方式将用户存储在内存中
+   		InMemoryUserDetailsManager manager = new InMemoryUserDetailsManager();
+   		manager.createUser(User.withUsername("zhangsan")
+   				.password("123").authorities("p1")
+   				.build());
+   		manager.createUser(User.withUsername("lisi")
+   				.password("456").authorities("p2")
+   				.build());
+   		return manager;
+   	}
+   
+   	/**
+   	 * 配置密码加密方式
+   	 */
+   	@Bean
+   	public PasswordEncoder passwordEncoder() {
+   		return NoOpPasswordEncoder.getInstance();
+   	}
+   
+   	/**
+   	 * 配置安全拦截机制
+   	 */
+   	@Override
+   	protected void configure(HttpSecurity http) throws Exception {
+   		http
+   				.authorizeRequests()
+   				// 访问/r开始的请求需要认证通过
+   				.antMatchers("/r/**", "/user/**").authenticated()
+   				// 其它请求全部放行
+   				.anyRequest().permitAll()
+   				.and()
+   				// 登录成功跳转到/login-success
+   				.formLogin().successForwardUrl("/login-success");
+   	}
+   
+   }
+   ```
+
+### 12.3 整合 OAuth2
+
+#### 12.3.1 什么是 OAuth2
+
+`OAuth 2.0` 是一种**用于授权**的开放**标准协议**，允许用户将**第三方应用程序**访问其在**另一个服务提供商**（如Google、Facebook、GitHub等）上的**资源**，而无需暴露其凭证（如用户名和密码）。它的工作原理涉及一系列的授权步骤，确保**用户授权的安全性**和**应用程序的可信性**。
+
+`OAuth 2.0` 的基本概念如下：
+
+- **资源所有者（Resource Owner）**：通常是最终用户。资源所有者拥有需要访问的资源。
+- **客户端（Client）**：希望访问资源所有者的资源的第三方应用程序，如浏览器或手机 APP。
+- **资源服务器（Resource Server）**：托管资源的服务器，通常是 API 服务器。
+- **授权服务器（Authorization Server）**：负责处理客户端的认证和授权请求，并发放访问令牌。
+- **访问令牌（Access Token）**：客户端用来访问资源服务器上的资源的凭证。
+
+#### 12.3.2 OAuth2 授权流程
+
+![image-20240727164049873](https://image.elonlo.top/img/2024/07/27/66a4b2934ac0f.png)
+
+#### 12.3.3 OAuth2 授权模式
+
+Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码模式`、`简化模式`、`客户端模式`等四种模式。**微信扫码登录**就是基于**授权码模式**，这四种模式中**授权码模式和密码模式**应用较多。
+
+**授权码模式**
+
+这是最常用的授权模式，特别适用于Web应用。基本流程如下：
+
+1. **用户请求授权**：用户通过客户端应用程序发起授权请求，客户端将用户重定向到授权服务器的授权端点。
+2. **用户授权**：用户在授权服务器上进行认证并授权客户端访问其资源。
+3. **授权服务器重定向**：授权服务器将用户重定向回客户端，并附带一个授权码（Authorization Code）。
+4. **客户端请求访问令牌**：客户端使用授权码向授权服务器的令牌端点请求访问令牌。
+5. **获取访问令牌**：授权服务器验证授权码并返回访问令牌。
+6. **使用访问令牌访问资源**：客户端使用访问令牌向资源服务器请求资源。
+
+**密码模式**
+
+这种模式适用于高度信任的客户端，比如官方应用程序。基本流程如下：
+
+1. **用户提供凭证**：用户将其用户名和密码提供给客户端。
+2. **客户端请求访问令牌**：客户端使用用户的凭证向授权服务器请求访问令牌。
+3. **获取访问令牌**：授权服务器验证用户凭证并返回访问令牌。
+4. **使用访问令牌访问资源**：客户端使用访问令牌向资源服务器请求资源。
+
+**简化模式**
+
+这种模式主要用于单页应用（SPA），不涉及服务器端的授权码交换。基本流程如下：
+
+1. **用户请求授权**：用户通过客户端应用程序发起授权请求，客户端将用户重定向到授权服务器的授权端点。
+2. **用户授权**：用户在授权服务器上进行认证并授权客户端访问其资源。
+3. **直接返回访问令牌**：授权服务器直接将访问令牌返回给客户端（通常通过URL片段）。
+
+**客户端模式**
+
+这种模式适用于服务之间的直接交互，不涉及用户。基本流程如下：
+
+1. **客户端请求访问令牌**：客户端使用其凭证（如客户端ID和客户端密钥）向授权服务器请求访问令牌。
+2. **获取访问令牌**：授权服务器验证客户端凭证并返回访问令牌。
+3. **使用访问令牌访问资源**：客户端使用访问令牌向资源服务器请求资源。
+
+#### 12.3.4 整合授权码模式
+
+1. 添加项目依赖信息
+
+   ```xml
+   <!-- 整合 oauth2 -->
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-oauth2</artifactId>
+   </dependency>
+   ```
+
+2. 添加 OAuth2 相关配置类
+
+   ```java
+   @EnableWebSecurity
+   @EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+   public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+   
+   	/**
+   	 * 配置认证管理器 bean
+   	 */
+   	@Bean
+   	public AuthenticationManager authenticationManager() throws Exception {
+   		return super.authenticationManager();
+   	}
+   }
+   ```
+
+   ```java
+   /**
+    * token 配置类
+    *
+    * @author elonlo
+    * @date 2024/7/27 17:33
+    */
+   @Configuration
+   public class TokenConfig {
+   
+   	@Bean
+   	public TokenStore tokenStore() {
+   		// 使用内存存储令牌（普通令牌）
+   		return new InMemoryTokenStore();
+   	}
+   
+   	/**
+   	 * 令牌管理服务
+   	 */
+   	@Bean(name = "authorizationServerTokenServicesCustom")
+   	public AuthorizationServerTokenServices tokenService(TokenStore tokenStore) {
+   		DefaultTokenServices service = new DefaultTokenServices();
+   		// 支持刷新令牌
+   		service.setSupportRefreshToken(true);
+   		// 令牌存储策略
+   		service.setTokenStore(tokenStore);
+   		// 令牌默认有效期2小时
+   		service.setAccessTokenValiditySeconds(7200);
+   		// 刷新令牌默认有效期3天
+   		service.setRefreshTokenValiditySeconds(259200);
+   		return service;
+   	}
+   }
+   ```
+
+   ```java
+   /**
+    * 授权服务器配置
+    *
+    * @author elonlo
+    * @date 2024/7/27 17:33
+    */
+   @Configuration
+   @EnableAuthorizationServer
+   public class AuthorizationServer extends AuthorizationServerConfigurerAdapter {
+   
+   	@Resource(name = "authorizationServerTokenServicesCustom")
+   	private AuthorizationServerTokenServices authorizationServerTokenServices;
+   
+   	private final AuthenticationManager authenticationManager;
+   
+   	@Autowired
+   	public AuthorizationServer(AuthenticationManager authenticationManager) {
+   		this.authenticationManager = authenticationManager;
+   	}
+   
+   	/**
+   	 * 创建认证管理器bean
+   	 */
+   	@Bean
+   	public AuthenticationManager authenticationManager() {
+   		return authentication -> authentication;
+   	}
+   
+   	/**
+   	 * 客户端详情服务
+   	 */
+   	@Override
+   	public void configure(ClientDetailsServiceConfigurer clients)
+   			throws Exception {
+   		// 使用 in-memory 存储
+   		clients.inMemory()
+   				// 配置 client_id
+   				.withClient("XcWebApp")
+   				// 配置 secret
+   				.secret("XcWebApp")
+   				// 资源列表
+   				.resourceIds("xuecheng-plus")
+   				// 该 client 允许的授权类型authorization_code,password,refresh_token,implicit,client_credentials
+   				.authorizedGrantTypes("authorization_code", "password", "client_credentials", "implicit", "refresh_token")
+   				// 允许的授权范围
+   				.scopes("all")
+   				// false 跳转到授权页面,手动授权,Approve: 同意 Deny: 禁止
+   				// true 直接跳转到重定向页面并携带授权码
+   				.autoApprove(false)
+   				// 客户端接收授权码的重定向地址
+   				.redirectUris("https://www.baidu.com");
+   	}
+   
+   
+   	/**
+   	 * 令牌端点的访问配置
+   	 */
+   	@Override
+   	public void configure(AuthorizationServerEndpointsConfigurer endpoints) {
+   		endpoints
+   				// 认证管理器
+   				.authenticationManager(authenticationManager)
+   				// 令牌管理服务
+   				.tokenServices(authorizationServerTokenServices)
+   				.allowedTokenEndpointRequestMethods(HttpMethod.POST);
+   	}
+   
+   	/**
+   	 * 令牌端点的安全配置
+   	 */
+   	@Override
+   	public void configure(AuthorizationServerSecurityConfigurer security) {
+   		security
+   				// oauth/token_key是公开
+   				.tokenKeyAccess("permitAll()")
+   				// oauth/check_token公开
+   				.checkTokenAccess("permitAll()")
+   				// 表单认证（申请令牌）
+   				.allowFormAuthenticationForClients();
+   	}
+   }
+   ```
+
+3. 获取授权码
+
+   在浏览器输入 `http://localhost:63070/auth/oauth/authorize?client_id=XcWebApp&response_type=code&scope=all&redirect_uri=https://www.baidu.com` 获取授权码
+
+   参数列表如下：
+
+   - client_id：客户端准入标识
+   - response_type：授权码模式固定为code
+   - scope：客户端权限
+   - redirect_uri：跳转 url，当授权码申请成功会跳转到此地址，并在地址后面带上 code 参数（授权码）
+
+4. 通过授权码申请令牌
+
+   发送 `http://localhost:63070/auth/oauth/token?client_id=XcWebApp&client_secret=XcWebApp&grant_type=authorization_code&code=vPauoV&redirect_uri=https://www.baidu.com` POST 请求申请令牌
+
+   参数列表如下：
+
+   - client_id：客户端准入标识
+   - client_secret：客户端密钥
+   - grant_type：授权类型，授权码模式为 authorization_code
+   - code：上面获取的授权码，只能使用一次
+   - redirect_uri：重定向地址，一定要和申请授权码时的 url 一致
+
+#### 12.3.5 整合密码模式
+
+1. 申请令牌
+
+   发送 `http://localhost:63070/auth/oauth/token?client_id=XcWebApp&client_secret=XcWebApp&grant_type=password&username=zhangsan&password=123` POST 请求申请令牌
+
+   参数列表如下：
+
+   - client_id：客户端准入标识
+   - client_secret：客户端密钥
+   - grant_type：授权类型，授权码模式为 password
+   - username：资源拥有者用户名
+   - password：资源拥有者密码
 
 
 
