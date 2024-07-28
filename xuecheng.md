@@ -10848,7 +10848,7 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
 2. **获取访问令牌**：授权服务器验证客户端凭证并返回访问令牌。
 3. **使用访问令牌访问资源**：客户端使用访问令牌向资源服务器请求资源。
 
-#### 12.3.4 整合授权码模式
+#### 12.3.4 授权码模式
 
 1. 添加项目依赖信息
 
@@ -10950,11 +10950,11 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
    		// 使用 in-memory 存储
    		clients.inMemory()
    				// 配置 client_id
-   				.withClient("XcWebApp")
+   				.withClient("testApp")
    				// 配置 secret
-   				.secret("XcWebApp")
+   				.secret("testApp")
    				// 资源列表
-   				.resourceIds("xuecheng-plus")
+   				.resourceIds("testResource")
    				// 该 client 允许的授权类型authorization_code,password,refresh_token,implicit,client_credentials
    				.authorizedGrantTypes("authorization_code", "password", "client_credentials", "implicit", "refresh_token")
    				// 允许的授权范围
@@ -10998,7 +10998,7 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
 
 3. 获取授权码
 
-   在浏览器输入 `http://localhost:63070/auth/oauth/authorize?client_id=XcWebApp&response_type=code&scope=all&redirect_uri=https://www.baidu.com` 获取授权码
+   在浏览器输入 `http://localhost:63070/auth/oauth/authorize?client_id=testApp&response_type=code&scope=all&redirect_uri=https://www.baidu.com` 获取授权码
 
    参数列表如下：
 
@@ -11009,7 +11009,7 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
 
 4. 通过授权码申请令牌
 
-   发送 `http://localhost:63070/auth/oauth/token?client_id=XcWebApp&client_secret=XcWebApp&grant_type=authorization_code&code=vPauoV&redirect_uri=https://www.baidu.com` POST 请求申请令牌
+   发送 `http://localhost:63070/auth/oauth/token?client_id=testApp&client_secret=testApp&grant_type=authorization_code&code=vPauoV&redirect_uri=https://www.baidu.com` POST 请求申请令牌
 
    参数列表如下：
 
@@ -11019,11 +11019,11 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
    - code：上面获取的授权码，只能使用一次
    - redirect_uri：重定向地址，一定要和申请授权码时的 url 一致
 
-#### 12.3.5 整合密码模式
+#### 12.3.5 密码模式
 
 1. 申请令牌
 
-   发送 `http://localhost:63070/auth/oauth/token?client_id=XcWebApp&client_secret=XcWebApp&grant_type=password&username=zhangsan&password=123` POST 请求申请令牌
+   发送 `http://localhost:63070/auth/oauth/token?client_id=testApp&client_secret=testApp&grant_type=password&username=zhangsan&password=123` POST 请求申请令牌
 
    参数列表如下：
 
@@ -11032,6 +11032,419 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
    - grant_type：授权类型，授权码模式为 password
    - username：资源拥有者用户名
    - password：资源拥有者密码
+
+### 12.4 整合 JWT
+
+1. 修改 `xuecheng-plus-auth` 模块下的 `TokenConfig` 类
+
+   ```java
+   @Configuration
+   public class TokenConfig {
+   
+   	/**
+   	 * 签名key
+   	 */
+   	private final String SINGING_KEY = "oauth-test";
+   
+   	/**
+   	 * OAuth2 令牌持久化接口
+   	 */
+   	@Bean
+   	public TokenStore tokenStore() {
+   		// 使用自定义 token
+   		return new JwtTokenStore(accessTokenConverter());
+   	}
+   
+   	/**
+   	 * JWT 与 OAuth2 认证转换器
+   	 */
+   	@Bean
+   	public JwtAccessTokenConverter accessTokenConverter() {
+   		JwtAccessTokenConverter tokenConverter = new JwtAccessTokenConverter();
+   		tokenConverter.setSigningKey(SINGING_KEY);
+   		return tokenConverter;
+   	}
+   
+   	/**
+   	 * 令牌管理服务
+   	 */
+   	@Bean(name = "authorizationServerTokenServicesCustom")
+   	public AuthorizationServerTokenServices tokenService(TokenStore tokenStore) {
+   		DefaultTokenServices service = new DefaultTokenServices();
+   		// 支持刷新令牌
+   		service.setSupportRefreshToken(true);
+   		// 令牌存储策略
+   		service.setTokenStore(tokenStore);
+   
+   		// 令牌增强器,使用自定义令牌
+   		TokenEnhancerChain tokenEnhancerChain = new TokenEnhancerChain();
+   		tokenEnhancerChain.setTokenEnhancers(Collections.singletonList(accessTokenConverter()));
+   		service.setTokenEnhancer(tokenEnhancerChain);
+   
+   		// 令牌默认有效期2小时
+   		service.setAccessTokenValiditySeconds(7200);
+   		// 刷新令牌默认有效期3天
+   		service.setRefreshTokenValiditySeconds(259200);
+   		return service;
+   	}
+   }
+   ```
+
+   重新请求 `http://localhost:63070/auth/oauth/token?client_id=testApp&client_secret=testApp&grant_type=password&username=zhangsan&password=123` 即可生成 jwt 格式的令牌
+
+   配置 JWT 方式生成令牌后，获取到的令牌相关内容如下：
+
+   - **access_token**：生成的 jwt 令牌，用于访问资源
+   - **token_type**：`Bearer` 是在 RFC6750 中定义的一种 token 类型，在携带 jwt 访问资源的时候需要在 header 中加入 `bearer jwt`
+   - **refresh_token**：当令牌快过期的时候使用刷新令牌可以再次生成新的 jwt 令牌
+   - **expires_in**：令牌过期时间（秒）
+   - **scope**：令牌的权限范围，服务端可以根据令牌的权限范围去对令牌授权
+   - **jti**：令牌的唯一标识
+
+2. 校验并解析令牌
+
+   发送 `http://localhost:63070/auth/oauth/check_token?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsieHVlY2hlbmctcGx1cyJdLCJ1c2VyX25hbWUiOiJ6aGFuZ3NhbiIsInNjb3BlIjpbImFsbCJdLCJleHAiOjE3MjIxMzQ5OTQsImF1dGhvcml0aWVzIjpbInAxIl0sImp0aSI6IjJkN2JlN2VhLWI4NWUtNDQyYS1iNGZiLTczNWFmMjM2OWFiNSIsImNsaWVudF9pZCI6IlhjV2ViQXBwIn0.EE1Oe4uA8Ba37gcJfMVDE9K5waTbsj6GdqGb0oDcOSI` POST 请求来校验并解析令牌
+
+   解析之后，获取到的内容如下：
+
+   - **aud**: 受众（Audience），表示令牌的接收者。在这里，它的值是一个数组，包含 `testResource`，表示这个令牌是为 `testResource` 应用程序生成的
+   - **user_name**: 用户名，表示令牌所对应的用户
+   - **scope**: 范围，表示令牌的权限范围。在这里，它的值是一个数组，包含 `"all"`，表示该令牌具有所有权限。
+   - **active**: 活跃状态，表示令牌是否仍然有效。在这里，它的值是 `true`，表示令牌是有效的。
+   - **exp**: 过期时间，表示令牌的过期时间，以 UNIX 时间戳的形式表示。在这里，值是 `1722134994`，表示令牌将在这个时间点过期。
+   - **authorities**: 权限，表示用户在系统中拥有的权限。在这里，它的值是一个数组，包含 `"p1"`，表示用户拥有 `p1` 权限。
+   - **jti**: JWT ID，令牌的唯一标识符。在这里，它的值是 `"2d7be7ea-b85e-442a-b4fb-735af2369ab5"`。
+   - **client_id**: 客户端 ID，表示请求令牌的客户端应用程序。在这里，它的值是 `testApp`。
+
+### 12.5 各个微服务整合认证授权
+
+1. 在 `xuecheng-plus-content-api` 模块中添加以下依赖
+
+   ```xml
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-security</artifactId>
+   </dependency>
+   
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-oauth2</artifactId>
+   </dependency>
+   ```
+
+2. 添加配置类
+
+   ```java
+   @Configuration
+   public class TokenConfig {
+   
+   	/**
+   	 * 签名key 使用对称加密,必须与auth模块中的SINGING_KEY一致
+   	 */
+   	public static final String SINGING_KEY = "oauth-test";
+   
+   	/**
+   	 * OAuth2令牌持久化接口
+   	 */
+   	@Bean
+   	public TokenStore tokenStore() {
+   		// 使用自定义token
+   		return new JwtTokenStore(accessTokenConverter());
+   	}
+   
+   	/**
+   	 * JWT与OAuth2认证转换器
+   	 */
+   	@Bean
+   	public JwtAccessTokenConverter accessTokenConverter() {
+   		JwtAccessTokenConverter tokenConverter = new JwtAccessTokenConverter();
+   		tokenConverter.setSigningKey(SINGING_KEY);
+   		return tokenConverter;
+   	}
+   }
+   ```
+
+   ```java
+   @Configuration
+   @EnableResourceServer
+   @EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+   public class ResourceServerConfig extends ResourceServerConfigurerAdapter {
+   
+   	/**
+   	 * 资源id,需要与 auth 模块中 AuthorizationServer类 的 configure 方法中的 resourceIds 一致
+   	 */
+   	public static final String RESOURCE_ID = "testResource";
+   
+   	private final TokenStore tokenStore;
+   
+   	@Autowired
+   	public ResourceServerConfig(TokenStore tokenStore) {
+   		this.tokenStore = tokenStore;
+   	}
+   
+   	@Override
+   	public void configure(ResourceServerSecurityConfigurer resources) {
+   		// 设置资源id
+   		resources.resourceId(RESOURCE_ID)
+   				.tokenStore(tokenStore)
+   				.stateless(true);
+   	}
+   
+   	@Override
+   	public void configure(HttpSecurity http) throws Exception {
+   		http.csrf().disable()
+   				.authorizeRequests()
+   				// 配置哪些请求 url 必须认证通过
+   				.antMatchers("/r/**", "/course/**").authenticated()
+   				.anyRequest().permitAll()
+   		;
+   	}
+   }
+   ```
+
+3. 测试调用接口
+
+   ```http
+   ### 查询课程详情
+   GET http://localhost:63040/content/course/40
+   Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsidGVzdFJlc291cmNlIl0sInVzZXJfbmFtZSI6InpoYW5nc2FuIiwic2NvcGUiOlsiYWxsIl0sImV4cCI6MTcyMjE0MTQzNSwiYXV0aG9yaXRpZXMiOlsicDEiXSwianRpIjoiYmU0MzQ5ZmItODcxYy00ODhjLTliMDgtMWYzMDEwODUwZTg0IiwiY2xpZW50X2lkIjoidGVzdEFwcCJ9.0Xaab0aS5t5BzuNtHiuPOXdJjPEBlktqTaw2fpmiORc
+   ```
+
+4. 在 `xuecheng-plus-content-api` 模块中测试获取用户信息
+
+   ```java
+   @ApiOperation(value = "课程信息详情")
+   @GetMapping("/course/{courseId}")
+   public CourseBaseInfoVO getCourseDetails(@PathVariable Long courseId) {
+       // 从securityContextHolder上下文中获取用户信息
+       Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+   
+       return courseBaseService.queryCourseBaseInfoVO(courseId);
+   }
+   ```
+
+### 12.6 网关认证
+
+网关认证流程如下：
+
+![image-20240728131130806](https://image.elonlo.top/img/2024/07/28/66a5d30e76b85.png)
+
+网关的主要作用如下：
+
+- 路由转发
+- 认证
+- 维护白名单
+
+**注意：网关的主要作用是用于认证，具体授权应该由各个微服务自己决定，这样处理起来比较灵活一些。**
+
+**实现网关认证**
+
+1. 在 `xuecheng-plus-gateway` 模块添加以下依赖
+
+   ```xml
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-security</artifactId>
+   </dependency>
+   
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-oauth2</artifactId>
+   </dependency>
+   ```
+
+2. 添加网关相关配置
+
+   ```java
+   @Configuration
+   public class TokenConfig {
+   
+   	/**
+   	 * 签名key 使用对称加密,必须与auth模块中的SINGING_KEY一致
+   	 */
+   	public static final String SINGING_KEY = "oauth-test";
+   
+   	/**
+   	 * OAuth2令牌持久化接口
+   	 */
+   	@Bean
+   	public TokenStore tokenStore() {
+   		// 使用自定义token
+   		return new JwtTokenStore(accessTokenConverter());
+   	}
+   
+   	/**
+   	 * JWT与OAuth2认证转换器
+   	 */
+   	@Bean
+   	public JwtAccessTokenConverter accessTokenConverter() {
+   		JwtAccessTokenConverter tokenConverter = new JwtAccessTokenConverter();
+   		tokenConverter.setSigningKey(SINGING_KEY);
+   		return tokenConverter;
+   	}
+   }
+   ```
+
+   ```java
+   @EnableWebFluxSecurity
+   @Configuration
+   public class SecurityConfig {
+   
+   	/**
+   	 * 安全拦截配置
+   	 */
+   	@Bean
+   	public SecurityWebFilterChain webFluxSecurityFilterChain(ServerHttpSecurity http) {
+   
+   		return http.authorizeExchange()
+   				.pathMatchers("/**").permitAll()
+   				.anyExchange().authenticated()
+   				.and().csrf().disable().build();
+   	}
+   }
+   ```
+
+   ```java
+   public class RestErrorResponse implements Serializable {
+   
+   	private static final long serialVersionUID = 1L;
+   
+   	/**
+   	 * 错误响应信息
+   	 */
+   	private String errMessage;
+   
+   	public RestErrorResponse(String errMessage) {
+   		this.errMessage = errMessage;
+   	}
+   
+   	public String getErrMessage() {
+   		return errMessage;
+   	}
+   
+   	public void setErrMessage(String errMessage) {
+   		this.errMessage = errMessage;
+   	}
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Component
+   public class GatewayAuthFilter implements GlobalFilter, Ordered {
+   
+   	private final TokenStore tokenStore;
+   
+   	@Autowired
+   	public GatewayAuthFilter(TokenStore tokenStore) {
+   		this.tokenStore = tokenStore;
+   	}
+   
+   	/**
+   	 * 白名单
+   	 */
+   	private static List<String> whitelist = new ArrayList<>();
+   
+   	static {
+   		// 加载白名单
+   		try (
+   				InputStream resourceAsStream = GatewayAuthFilter.class.getResourceAsStream("/security-whitelist.properties");
+   		) {
+   			Properties properties = new Properties();
+   			properties.load(resourceAsStream);
+   			Set<String> strings = properties.stringPropertyNames();
+   			whitelist = new ArrayList<>(strings);
+   
+   		} catch (Exception e) {
+   			log.error("加载/security-whitelist.properties出错:{}", e.getMessage());
+   			e.printStackTrace();
+   		}
+   	}
+   
+   	/**
+   	 * 过滤器处理请求
+   	 */
+   	@Override
+   	public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+   		String requestUrl = exchange.getRequest().getPath().value();
+   		AntPathMatcher pathMatcher = new AntPathMatcher();
+   		// 白名单放行
+   		for (String url : whitelist) {
+   			if (pathMatcher.match(url, requestUrl)) {
+   				return chain.filter(exchange);
+   			}
+   		}
+   
+   		// 检查token是否存在
+   		String token = getToken(exchange);
+   		if (StringUtils.isBlank(token)) {
+   			return buildReturnMono("没有认证", exchange);
+   		}
+   		// 判断是否是有效的token
+   		OAuth2AccessToken oAuth2AccessToken;
+   		try {
+   			oAuth2AccessToken = tokenStore.readAccessToken(token);
+   
+   			boolean expired = oAuth2AccessToken.isExpired();
+   			if (expired) {
+   				return buildReturnMono("认证令牌已过期", exchange);
+   			}
+   			return chain.filter(exchange);
+   		} catch (InvalidTokenException e) {
+   			log.info("认证令牌无效: {}", token);
+   			return buildReturnMono("认证令牌无效", exchange);
+   		}
+   
+   	}
+   
+   	/**
+   	 * 获取token
+   	 */
+   	private String getToken(ServerWebExchange exchange) {
+   		String tokenStr = exchange.getRequest().getHeaders().getFirst("Authorization");
+   		if (StringUtils.isBlank(tokenStr)) {
+   			return null;
+   		}
+   		String token = tokenStr.split(" ")[1];
+   		if (StringUtils.isBlank(token)) {
+   			return null;
+   		}
+   		return token;
+   	}
+   	
+   	/**
+   	 * 组装返回信息
+   	 */
+   	private Mono<Void> buildReturnMono(String error, ServerWebExchange exchange) {
+   		ServerHttpResponse response = exchange.getResponse();
+   		String jsonString = JSON.toJSONString(new RestErrorResponse(error));
+   		byte[] bits = jsonString.getBytes(StandardCharsets.UTF_8);
+   		DataBuffer buffer = response.bufferFactory().wrap(bits);
+   		response.setStatusCode(HttpStatus.UNAUTHORIZED);
+   		response.getHeaders().add("Content-Type", "application/json;charset=UTF-8");
+   		return response.writeWith(Mono.just(buffer));
+   	}
+   	
+   	@Override
+   	public int getOrder() {
+   		return 0;
+   	}
+   }
+   ```
+
+3. 在 `Resource` 目录下添加白名单属性配置
+
+   ```properties
+   /auth/**=
+   /content/open/**=
+   /media/open/**=
+   ```
+
+### 12.7 用户认证
+
+
+
+
 
 
 
