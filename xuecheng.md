@@ -11442,11 +11442,231 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
 
 ### 12.7 用户认证
 
+#### 12.7.1 连接数据库认证
+
+1. `xuecheng-plus-auth` 模块自定义 `UserDetailsService` 认证逻辑
+
+   ```java
+   @Component
+   public class UserServiceImpl implements UserDetailsService {
+   
+   	private final UserMapper userMapper;
+   
+   	@Autowired
+   	public UserServiceImpl(UserMapper userMapper) {
+   		this.userMapper = userMapper;
+   	}
+   
+   	/**
+   	 * 自定义Spring Security认证逻辑
+   	 */
+   	@Override
+   	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+   		// 根据用户名去数据库查询用户信息
+   		Users users = userMapper.selectOne(new LambdaQueryWrapper<Users>()
+   				.eq(Users::getUsername, username));
+   
+   		// 用户不存在直接返回null,Spring Security进行后续处理
+   		if (Objects.isNull(users)) {
+   			return null;
+   		}
+   
+   		// 构造UserDetails对象返回
+   		String[] authorizations = {"test"};
+   		return User.withUsername(username)
+   				.authorities(authorizations)
+   				.password(users.getPassword())
+   				.build();
+   	}
+   }
+   ```
+
+2. 使用 `BCryptPasswordEncoder` 加密
+
+   ```java
+   @EnableWebSecurity
+   @EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+   public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+   	/**
+   	 * 配置密码加密方式
+   	 */
+   	@Bean
+   	public PasswordEncoder passwordEncoder() {
+   		return new BCryptPasswordEncoder();
+   	}
+   }
+   ```
+
+3. 授权服务中 `secret` 值使用 `BCryptPasswordEncoder` 加密
+
+   ```java
+   @Configuration
+   @EnableAuthorizationServer
+   public class AuthorizationServer extends AuthorizationServerConfigurerAdapter {
+   	/**
+   	 * 客户端详情服务
+   	 */
+   	@Override
+   	public void configure(ClientDetailsServiceConfigurer clients)
+   			throws Exception {
+   		// 使用 in-memory 存储
+   		clients.inMemory()
+   				// 配置client_id
+   				.withClient("testApp")
+   				// 配置secret
+   				.secret(new BCryptPasswordEncoder().encode("testApp"))
+   				// 资源列表
+   				.resourceIds("testResource")
+   				// 该client允许的授权类型authorization_code,password,refresh_token,implicit,client_credentials
+   				.authorizedGrantTypes("authorization_code", "password", "client_credentials", "implicit", "refresh_token")
+   				// 允许的授权范围
+   				.scopes("all")
+   				// false 跳转到授权页面,手动授权,Approve: 同意 Deny: 禁止
+   				// true 直接跳转到重定向页面并携带授权码
+   				.autoApprove(false)
+   				// 客户端接收授权码的重定向地址
+   				.redirectUris("https://www.baidu.com");
+   	}
+   }
+   ```
+
+#### 12.7.2 扩展用户返回信息
+
+1. 自定义 `UserDetailsService` 实现类中返回封装用户 `json` 数据
+
+   ```java
+   @Component
+   public class UserServiceImpl implements UserDetailsService {
+   
+   	private final UserMapper userMapper;
+   
+   	@Autowired
+   	public UserServiceImpl(UserMapper userMapper) {
+   		this.userMapper = userMapper;
+   	}
+   
+   	/**
+   	 * 自定义Spring Security认证逻辑
+   	 */
+   	@Override
+   	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+   		// 根据用户名去数据库查询用户信息
+   		Users users = userMapper.selectOne(new LambdaQueryWrapper<Users>()
+   				.eq(Users::getUsername, username));
+   
+   		// 用户不存在直接返回null,Spring Security进行后续处理
+   		if (Objects.isNull(users)) {
+   			return null;
+   		}
+   
+   		String password = users.getPassword();
+   
+   		// 注意为了安全,用户对象中的密码需要置空
+   		users.setPassword(null);
+   
+   		// 封装用户信息
+   		String userJson = JSON.toJSONString(users);
+   
+   		// 构造UserDetails对象返回
+   		String[] authorizations = {"test"};
+   		return User.withUsername(userJson)
+   				.authorities(authorizations)
+   				.password(password)
+   				.build();
+   	}
+   }
+   ```
+
+2.  在 `xuecheng-plus-content-api` 模块下创建用户认证信息解析工具类
+
+   ```java
+   @Slf4j
+   public class SecurityUserUtils {
+   
+   	public static Users getUser() {
+   		try {
+   			// 拿到当前用户身份
+   			Object principalObj = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+   			if (principalObj instanceof String) {
+   				// 取出用户身份信息
+   				String principal = principalObj.toString();
+   				// 将json转成对象
+   				return JSON.parseObject(principal, Users.class);
+   			}
+   		} catch (Exception e) {
+   			log.error("获取当前登录用户身份出错:{}", e.getMessage());
+   			e.printStackTrace();
+   		}
+   		return null;
+   	}
+   
+   
+   	@Data
+   	public static class Users implements Serializable {
+   
+   		private static final long serialVersionUID = 1L;
+   
+   		private String id;
+   
+   		private String username;
+   
+   		private String password;
+   
+   		private String salt;
+   
+   		private String name;
+   
+   		private String nickname;
+   
+   		private String wxUnionid;
+   
+   		private String companyId;
+   
+   		private String userpic;
+   
+   		private String utype;
+   
+   		private LocalDateTime birthday;
+   
+   		private String sex;
+   
+   		private String email;
+   
+   		private String cellphone;
+   
+   		private String qq;
+   
+   		private String status;
+   
+   		private LocalDateTime createTime;
+   
+   		private LocalDateTime updateTime;
+   	}
+   }
+   ```
+
+3. 使用工具类获取用户信息
+
+   ```java
+   @ApiOperation(value = "课程信息详情")
+   @GetMapping("/course/{courseId}")
+   public CourseBaseInfoVO getCourseDetails(@PathVariable Long courseId) {
+       // 使用工具类从securityContextHolder上下文中获取用户信息
+       SecurityUserUtils.Users users = SecurityUserUtils.getUser();
+   
+       return courseBaseService.queryCourseBaseInfoVO(courseId);
+   }
+   ```
+
+### 12.8 统一认证
+
+#### 12.8.1 认证参数统一
 
 
 
+#### 12.8.2 自定义认证方式
 
-
+#### 12.8.3 认证策略
 
 
 
