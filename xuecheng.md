@@ -11707,24 +11707,46 @@ public class AuthParamsDTO implements Serializable {
 
 #### 12.8.2 自定义认证方式
 
-```java
-public class CustomDaoAuthenticationProvider extends DaoAuthenticationProvider {
+1. 自定义认证方式
 
-	@Resource
-	public void setUserDetailsService(UserDetailsService userDetailsService) {
-		super.setUserDetailsService(userDetailsService);
-	}
+   ```java
+   public class CustomDaoAuthenticationProvider extends DaoAuthenticationProvider {
+   
+   	@Autowired
+   	public void setUserDetailsService(UserDetailsService userDetailsService) {
+   		super.setUserDetailsService(userDetailsService);
+   	}
+   
+   	/**
+   	 * 认证校验
+   	 */
+   	@Override
+   	protected void additionalAuthenticationChecks(UserDetails userDetails, 
+                                                     UsernamePasswordAuthenticationToken authentication) throws AuthenticationException {
+   
+   	}
+   }
+   ```
 
-	/**
-	 * 认证校验
-	 */
-	@Override
-	protected void additionalAuthenticationChecks(UserDetails userDetails, 
-                                                  UsernamePasswordAuthenticationToken authentication) throws AuthenticationException {
+2. 配置自定义认证方式
 
-	}
-}
-```
+   ```java
+   @EnableWebSecurity
+   @EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+   public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+   
+       @Resource
+       private CustomDaoAuthenticationProvider customDaoAuthenticationProvider;
+   
+       /**
+        * 自定义认证方式
+        */
+       @Override
+       protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+           auth.authenticationProvider(customDaoAuthenticationProvider);
+       }
+   }
+   ```
 
 #### 12.8.3 认证策略定义
 
