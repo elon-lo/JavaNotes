@@ -11662,11 +11662,358 @@ Spring Security 支持 OAuth2 认证，OAuth2 提供`授权码模式`、`密码�
 
 #### 12.8.1 认证参数统一
 
+```java
+@Data
+public class AuthParamsDTO implements Serializable {
 
+	private static final long serialVersionUID = 1L;
+
+	/**
+	 * 用户名
+	 */
+	private String username;
+
+	/**
+	 * 域  用于扩展
+	 */
+	private String password;
+
+	/**
+	 * 手机号
+	 */
+	private String cellphone;
+
+	/**
+	 * 验证码
+	 */
+	private String checkCode;
+
+	/**
+	 * 验证码key
+	 */
+	private String checkCodeKey;
+
+	/**
+	 * 认证的类型   password:用户名密码模式类型  captcha:短信模式类型  code:微信扫码模式类型
+	 */
+	private String authType;
+
+	/**
+	 * 附加数据，作为扩展，不同认证类型可拥有不同的附加数据。如认证类型为短信时包含smsKey : sms:3d21042d054548b08477142bbca95cfa; 所有情况下都包含clientId
+	 */
+	private Map<String, Object> payload;
+}
+```
 
 #### 12.8.2 自定义认证方式
 
-#### 12.8.3 认证策略
+```java
+public class CustomDaoAuthenticationProvider extends DaoAuthenticationProvider {
+
+	@Resource
+	public void setUserDetailsService(UserDetailsService userDetailsService) {
+		super.setUserDetailsService(userDetailsService);
+	}
+
+	/**
+	 * 认证校验
+	 */
+	@Override
+	protected void additionalAuthenticationChecks(UserDetails userDetails, 
+                                                  UsernamePasswordAuthenticationToken authentication) throws AuthenticationException {
+
+	}
+}
+```
+
+#### 12.8.3 认证策略定义
+
+1. 认证策略接口
+
+   ```java
+   /**
+    * 认证策略接口
+    *
+    * @author elonlo
+    * @date 2024/7/28 18:13
+    */
+   public interface AuthStrategy {
+   
+   	/**
+   	 * 认证类型枚举
+   	 */
+   	AuthTypeEnum getAuthTypeEnum();
+   
+   	/**
+   	 * 认证
+   	 *
+   	 * @param dto 认证参数
+   	 * @return {@link Users }
+   	 */
+   	Users auth(AuthParamsDTO dto);
+   }
+   ```
+
+2. 定义多个策略
+
+   ```java
+   /**
+    * 验证码认证策略
+    *
+    * @author elonlo
+    * @date 2024/7/28 18:33
+    */
+   @Slf4j
+   @Component(value = "captchaAuthStrategy")
+   public class CaptchaAuthStrategy implements AuthStrategy {
+   
+   	/**
+   	 * 验证码类型
+   	 */
+   	@Override
+   	public AuthTypeEnum getAuthTypeEnum() {
+   		return AuthTypeEnum.CAPTCHA;
+   	}
+   
+   	/**
+   	 * 验证码认证
+   	 */
+   	@Override
+   	public Users auth(AuthParamsDTO dto) {
+   		// TODO 待完成
+   		return null;
+   	}
+   }
+   ```
+
+   ```java
+   /**
+    * 扫码认证策略
+    *
+    * @author elonlo
+    * @date 2024/7/28 18:35
+    */
+   @Slf4j
+   @Component(value = "codeAuthStrategy")
+   public class CodeAuthStrategy implements AuthStrategy {
+   
+   	/**
+   	 * 扫码认证类型
+   	 */
+   	@Override
+   	public AuthTypeEnum getAuthTypeEnum() {
+   		return AuthTypeEnum.CODE;
+   	}
+   
+   	/**
+   	 * 扫码认证
+   	 */
+   	@Override
+   	public Users auth(AuthParamsDTO dto) {
+   		// TODO 待完成
+   		return null;
+   	}
+   }
+   ```
+
+   ```java
+   /**
+    * 用户名密码认证策略
+    *
+    * @author elonlo
+    * @date 2024/7/28 18:27
+    */
+   @Slf4j
+   @Component(value = "passwordAuthStrategy")
+   public class PasswordAuthStrategy implements AuthStrategy {
+   
+   	/**
+   	 * 用户名密码类型
+   	 */
+   	@Override
+   	public AuthTypeEnum getAuthTypeEnum() {
+   		return AuthTypeEnum.PASSWORD;
+   	}
+   
+   	/**
+   	 * 用户名密码认证
+   	 */
+   	@Override
+   	public Users auth(AuthParamsDTO dto) {
+   		// TODO 待完成
+   		return null;
+   	}
+   }
+   ```
+
+3. 认证策略上下文
+
+   ```java
+   /**
+    * 认证策略上下文
+    *
+    * @author elonlo
+    * @date 2024/7/28 18:17
+    */
+   @Component
+   public class AuthStrategyContext {
+   
+   	@Resource
+   	private ApplicationContext applicationContext;
+   
+   	/**
+   	 * 存储策略类型和对应的策略实例
+   	 */
+   	public final Map<String, AuthStrategy> strategyMap = new HashMap<>(4);
+   
+   	/**
+   	 * 初始化方法，在Bean创建后调用
+   	 * 该方法获取所有AuthStrategy实例,并将它们存储在strategyMap中
+   	 * 以便根据类型快速查找对应的策略。
+   	 */
+   	@PostConstruct
+   	public void init() {
+   		// 获取实现AuthStrategy接口的所有实例bean
+   		Map<String, AuthStrategy> map = applicationContext.getBeansOfType(AuthStrategy.class);
+   
+   		map.forEach((k, v) -> strategyMap.put(v.getAuthTypeEnum().getType(), v));
+   	}
+   
+   	/**
+   	 * 根据枚举类型获取对应的策略
+   	 */
+   	public AuthStrategy getAuthStrategy(String typeEnum) {
+   		return strategyMap.get(typeEnum);
+   	}
+   }
+   ```
+
+#### 12.8.4 认证策略实现
+
+1. 修改自定义认证实现类
+
+   ```java
+   /**
+    * 用户服务实现类,使用Spring Security进行认证
+    *
+    * @author elonlo
+    * @date 2024/7/28 15:17
+    */
+   @Component
+   public class UserServiceImpl implements UserDetailsService {
+   
+   	@Resource
+   	private AuthStrategyContext authStrategyContext;
+   
+   	/**
+   	 * 自定义Spring Security认证逻辑
+   	 */
+   	@Override
+   	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+   
+   		AuthParamsDTO authParamsDTO;
+   
+   		// 解析传入的json参数为AuthParamsDTO
+   		try {
+   			authParamsDTO = JSON.parseObject(username, AuthParamsDTO.class);
+   		} catch (Exception e) {
+   			e.printStackTrace();
+   			throw new RuntimeException("请求认证参数格式不正确!");
+   		}
+   
+   		// 获取认证类型,根据认证类型获取对应的策略
+   		String authType = authParamsDTO.getAuthType();
+   		AuthStrategy authStrategy = authStrategyContext.getAuthStrategy(authType);
+   
+   		UsersVO usersVO = authStrategy.auth(authParamsDTO);
+   		return buildUserPrincipal(usersVO);
+   	}
+   
+   	/**
+   	 * 构建用户身份信息
+   	 */
+   	private UserDetails buildUserPrincipal(UsersVO usersVO) {
+   		String password = usersVO.getPassword();
+   
+   		// 注意为了安全,用户对象中的密码需要置空
+   		usersVO.setPassword(null);
+   
+   		// 封装用户信息
+   		String userJson = JSON.toJSONString(usersVO);
+   
+   		// 构造UserDetails对象返回
+   		String[] authorizations = {"test"};
+   		return User.withUsername(userJson)
+   				.authorities(authorizations)
+   				.password(password)
+   				.build();
+   	}
+   }
+   ```
+
+2. 用户名密码认证实现
+
+   ```java
+   @Slf4j
+   @Component(value = "passwordAuthStrategy")
+   public class PasswordAuthStrategy implements AuthStrategy {
+   
+   	private final UserMapper userMapper;
+   
+   	private final PasswordEncoder passwordEncoder;
+   
+   	@Autowired
+   	public PasswordAuthStrategy(UserMapper userMapper, PasswordEncoder passwordEncoder) {
+   		this.userMapper = userMapper;
+   		this.passwordEncoder = passwordEncoder;
+   	}
+   
+   	/**
+   	 * 用户名密码类型
+   	 */
+   	@Override
+   	public AuthTypeEnum getAuthTypeEnum() {
+   		return AuthTypeEnum.PASSWORD;
+   	}
+   
+   	/**
+   	 * 用户名密码认证
+   	 */
+   	@Override
+   	public UsersVO auth(AuthParamsDTO dto) {
+   
+   		// 获取用户名信息
+   		String username = dto.getUsername();
+   
+   		Users users = userMapper.selectOne(new LambdaQueryWrapper<Users>()
+   				.eq(Users::getUsername, username));
+   
+   		// 用户不存在直接返回null,Spring Security进行后续处理
+   		if (Objects.isNull(users)) {
+   			return null;
+   		}
+   
+   		// 校验密码
+   		String rawPassword = dto.getPassword();
+   		String encodedPassword = users.getPassword();
+   		if (!passwordEncoder.matches(rawPassword, encodedPassword)) {
+   			throw new RuntimeException("用户名密码不正确!");
+   		}
+   
+   		// 返回usersVO
+   		UsersVO usersVO = new UsersVO();
+   		BeanUtils.copyProperties(users, usersVO);
+   
+   		return usersVO;
+   	}
+   }
+   ```
+
+3. 验证码认证实现
+
+4. 扫码认证实现
+
+
 
 
 
