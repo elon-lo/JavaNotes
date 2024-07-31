@@ -11750,7 +11750,52 @@ public class AuthParamsDTO implements Serializable {
 
 #### 12.8.3 认证策略定义
 
-1. 认证策略接口
+1. 认证类型枚举
+
+   ```java
+   public enum AuthTypeEnum {
+   
+   	/**
+   	 * 用户名密码
+   	 */
+   	PASSWORD("password", "用户名密码"),
+   
+   	/**
+   	 * 验证码
+   	 */
+   	SMS("sms", "短信认证"),
+   
+   	/**
+   	 * 扫码认证
+   	 */
+   	CODE("code", "扫码认证");
+   
+   	/**
+   	 * 认证类型
+   	 */
+   	private final String type;
+   
+   	/**
+   	 * 认证类型值
+   	 */
+   	private final String text;
+   
+   	public String getType() {
+   		return type;
+   	}
+   
+   	public String getText() {
+   		return text;
+   	}
+   
+   	AuthTypeEnum(String type, String text) {
+   		this.type = type;
+   		this.text = text;
+   	}
+   }
+   ```
+
+2. 认证策略接口
 
    ```java
    /**
@@ -11770,38 +11815,38 @@ public class AuthParamsDTO implements Serializable {
    	 * 认证
    	 *
    	 * @param dto 认证参数
-   	 * @return {@link Users }
+   	 * @return {@link UsersVO }
    	 */
-   	Users auth(AuthParamsDTO dto);
+   	UsersVO auth(AuthParamsDTO dto);
    }
    ```
 
-2. 定义多个策略
+3. 定义多个策略
 
    ```java
    /**
-    * 验证码认证策略
+    * 短信认证策略
     *
     * @author elonlo
     * @date 2024/7/28 18:33
     */
    @Slf4j
-   @Component(value = "captchaAuthStrategy")
-   public class CaptchaAuthStrategy implements AuthStrategy {
+   @Component(value = "smsAuthStrategy")
+   public class SmsAuthStrategy implements AuthStrategy {
    
    	/**
-   	 * 验证码类型
+   	 * 短信类型
    	 */
    	@Override
    	public AuthTypeEnum getAuthTypeEnum() {
-   		return AuthTypeEnum.CAPTCHA;
+   		return AuthTypeEnum.SMS;
    	}
    
    	/**
-   	 * 验证码认证
+   	 * 短信认证
    	 */
    	@Override
-   	public Users auth(AuthParamsDTO dto) {
+   	public UsersVO auth(AuthParamsDTO dto) {
    		// TODO 待完成
    		return null;
    	}
@@ -11831,7 +11876,7 @@ public class AuthParamsDTO implements Serializable {
    	 * 扫码认证
    	 */
    	@Override
-   	public Users auth(AuthParamsDTO dto) {
+   	public UsersVO auth(AuthParamsDTO dto) {
    		// TODO 待完成
    		return null;
    	}
@@ -11861,14 +11906,14 @@ public class AuthParamsDTO implements Serializable {
    	 * 用户名密码认证
    	 */
    	@Override
-   	public Users auth(AuthParamsDTO dto) {
+   	public UsersVO auth(AuthParamsDTO dto) {
    		// TODO 待完成
    		return null;
    	}
    }
    ```
 
-3. 认证策略上下文
+4. 认证策略上下文
 
    ```java
    /**
@@ -11910,7 +11955,537 @@ public class AuthParamsDTO implements Serializable {
    }
    ```
 
-#### 12.8.4 认证策略实现
+#### 12.8.4 整合验证码模块
+
+1. 创建验证码模块 `xuecheng-plus-captcha`
+
+2. 添加依赖信息
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>xuecheng-plus</artifactId>
+           <groupId>com.yu.xuecheng</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>xuecheng-plus-captcha</artifactId>
+   
+       <properties>
+           <maven.compiler.source>8</maven.compiler.source>
+           <maven.compiler.target>8</maven.compiler.target>
+           <kaptcha.version>2.3.2</kaptcha.version>
+           <commons-pool2.version>2.6.2</commons-pool2.version>
+       </properties>
+   
+       <dependencies>
+           <dependency>
+               <groupId>com.yu.xuecheng</groupId>
+               <artifactId>xuecheng-plus-base</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.alibaba.cloud</groupId>
+               <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.github.penggle</groupId>
+               <artifactId>kaptcha</artifactId>
+               <version>${kaptcha.version}</version>
+           </dependency>
+   
+           <!-- Spring Boot 的 Spring Web MVC 集成 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-validation</artifactId>
+           </dependency>
+   
+           <!-- 排除 Spring Boot 依赖的日志包冲突 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter</artifactId>
+               <exclusions>
+                   <exclusion>
+                       <groupId>org.springframework.boot</groupId>
+                       <artifactId>spring-boot-starter-logging</artifactId>
+                   </exclusion>
+               </exclusions>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-data-redis</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.apache.commons</groupId>
+               <artifactId>commons-pool2</artifactId>
+               <version>${commons-pool2.version}</version>
+           </dependency>
+   
+           <!-- Spring Boot 集成 Junit -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+   
+           <!-- Spring Boot 集成 log4j2 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-log4j2</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>com.github.xiaoymin</groupId>
+               <artifactId>knife4j-spring-boot-starter</artifactId>
+           </dependency>
+   
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+3. 添加项目配置
+
+   ```yaml
+   spring:
+     application:
+       name: captcha
+     cloud:
+       nacos:
+         server-addr: ip
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+             - data-id: redis-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+   
+     profiles:
+       active: dev
+   ```
+
+4. 添加 Nacos 配置
+
+   ```yaml
+   server:
+     servlet:
+       context-path: /captcha
+     port: 63075
+   ```
+
+   ```yaml
+   spring:
+     redis:
+       host: ip
+       port: 16479
+       password: 123456
+       database: 0
+       lettuce:
+         pool:
+           max-active: 20
+           max-idle: 10
+           min-idle: 0
+       timeout: 10000
+   ```
+
+5. 添加验证码配置类
+
+   ```java
+   @Configuration
+   public class KaptchaConfig {
+   
+   	/**
+   	 * 图片验证码生成器，使用开源的kaptcha
+   	 */
+   	@Bean
+   	public DefaultKaptcha producer() {
+   		Properties properties = new Properties();
+   		properties.put("kaptcha.border", "no");
+   		properties.put("kaptcha.textproducer.font.color", "black");
+   		properties.put("kaptcha.textproducer.char.space", "10");
+   		properties.put("kaptcha.textproducer.char.length", "4");
+   		properties.put("kaptcha.image.height", "34");
+   		properties.put("kaptcha.image.width", "138");
+   		properties.put("kaptcha.textproducer.font.size", "25");
+   
+   		properties.put("kaptcha.noise.impl", "com.google.code.kaptcha.impl.NoNoise");
+   		Config config = new Config(properties);
+   		DefaultKaptcha defaultKaptcha = new DefaultKaptcha();
+   		defaultKaptcha.setConfig(config);
+   		return defaultKaptcha;
+   	}
+   }
+   ```
+
+6. 添加 dto、vo
+
+   ```java
+   @Data
+   public class CaptchaDTO implements Serializable {
+   
+   	private static final long serialVersionUID = 1L;
+   
+   	/**
+   	 * 验证码类型:pic、sms、email等
+   	 */
+   	private String captchaType;
+   
+   	/**
+   	 * 业务携带参数1
+   	 */
+   	private String param1;
+   
+   	/**
+   	 * 业务携带参数2
+   	 */
+   	private String param2;
+   
+   	/**
+   	 * 业务携带参数3
+   	 */
+   	private String param3;
+   }
+   ```
+
+   ```java
+   @Data
+   public class CaptchaVO implements Serializable {
+   
+   	private static final long serialVersionUID = 1L;
+   
+   	/**
+   	 * key用于验证
+   	 */
+   	private String key;
+   
+   	/**
+   	 * 混淆后的内容
+   	 * 举例：
+   	 * 1.图片验证码为:图片base64编码
+   	 * 2.短信验证码为:null
+   	 * 3.邮件验证码为: null
+   	 * 4.邮件链接点击验证为：null
+   	 * ...
+   	 */
+   	private String aliasing;
+   }
+   ```
+
+7. 添加接口以及实现类
+
+   ```java
+   @Component("numberLetterCaptchaGenerator")
+   public class NumberLetterCaptchaGenerator implements CaptchaService.CaptchaGenerator {
+   
+   	/**
+   	 * 生成指定长度的随机字母数字
+   	 *
+   	 * @param length 长度
+   	 * @return {@link String }
+   	 */
+   	@Override
+   	public String generate(int length) {
+   		String str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+   		Random random = new Random();
+   		StringBuilder sb = new StringBuilder();
+   		for (int i = 0; i < length; i++) {
+   			int number = random.nextInt(36);
+   			sb.append(str.charAt(number));
+   		}
+   		return sb.toString();
+   	}
+   }
+   ```
+
+   ```java
+   @Component("redisCaptchaStore")
+   public class RedisCaptchaStore implements CaptchaService.CaptchaStore {
+   
+   	private final RedisTemplate<String, String> redisTemplate;
+   
+   	@Autowired
+   	public RedisCaptchaStore(RedisTemplate<String, String> redisTemplate) {
+   		this.redisTemplate = redisTemplate;
+   	}
+   
+   	@Override
+   	public void set(String key, String value, Integer expire) {
+   		redisTemplate.opsForValue().set(key, value, expire, TimeUnit.SECONDS);
+   	}
+   
+   	@Override
+   	public String get(String key) {
+   		return redisTemplate.opsForValue().get(key);
+   	}
+   
+   	@Override
+   	public void remove(String key) {
+   		redisTemplate.delete(key);
+   	}
+   }
+   ```
+
+   ```java
+   @Component("uuidKeyGenerator")
+   public class UUIDKeyGenerator implements CaptchaService.KeyGenerator {
+   
+   	/**
+   	 * 生成指定前缀的uuid
+   	 *
+   	 * @param prefix 前缀
+   	 * @return {@link String }
+   	 */
+   	@Override
+   	public String generate(String prefix) {
+   		String uuid = UUID.randomUUID().toString();
+   		return prefix + uuid.replaceAll("-", "");
+   	}
+   }
+   ```
+
+   ```java
+   public interface CaptchaService {
+   
+   	/**
+   	 * 生成验证码
+   	 *
+   	 * @param dto 生成验证码参数
+   	 * @return {@link CaptchaVO }
+   	 */
+   	CaptchaVO generate(CaptchaDTO dto);
+   
+   	/**
+   	 * 校验验证码
+   	 */
+   	boolean verify(String key, String code);
+   
+   
+   	/**
+   	 * 验证码生成器接口
+   	 */
+   	interface CaptchaGenerator {
+   
+   		/**
+   		 * 生成指定位数验证码
+   		 *
+   		 * @return 验证码长度
+   		 */
+   		String generate(int length);
+   	}
+   
+   	/**
+   	 * uuid key生成器
+   	 */
+   	interface KeyGenerator {
+   
+   		/**
+   		 * 生成指定前缀的uuid key
+   		 *
+   		 * @return 前缀
+   		 */
+   		String generate(String prefix);
+   	}
+   
+   
+   	/**
+   	 * 验证码存储
+   	 */
+   	interface CaptchaStore {
+   
+   		void set(String key, String value, Integer expire);
+   
+   		String get(String key);
+   
+   		void remove(String key);
+   	}
+   }
+   ```
+
+   ```java
+   @Slf4j
+   public abstract class AbstractCaptchaService implements CaptchaService {
+   
+   	protected CaptchaGenerator captchaGenerator;
+   	protected KeyGenerator keyGenerator;
+   	protected CaptchaStore captchaStore;
+   
+   	public abstract void setCaptchaGenerator(CaptchaGenerator captchaGenerator);
+   
+   	public abstract void setKeyGenerator(KeyGenerator keyGenerator);
+   
+   	public abstract void setCaptchaStore(CaptchaStore captchaStore);
+   
+   	/**
+   	 * 生成验证公用方法
+   	 *
+   	 * @param dto         生成验证码参数
+   	 * @param code_length code长度
+   	 * @param keyPrefix   key前缀
+   	 * @param expire      缓存时间
+   	 * @return {@link CaptchaResult }
+   	 */
+   	public CaptchaResult generate(CaptchaDTO dto, Integer code_length, String keyPrefix, Integer expire) {
+   		// 生成四位验证码
+   		String code = captchaGenerator.generate(code_length);
+   		log.debug("生成验证码:{}", code);
+   		// 生成一个key
+   		String key = keyGenerator.generate(keyPrefix);
+   
+   		// 存储验证码
+   		captchaStore.set(key, code, expire);
+   		// 返回验证码生成结果
+   		CaptchaResult generateResult = new CaptchaResult();
+   		generateResult.setKey(key);
+   		generateResult.setCode(code);
+   		return generateResult;
+   	}
+   
+   	@Data
+   	protected static class CaptchaResult {
+   		String key;
+   		String code;
+   	}
+   
+   	/**
+   	 * 生成验证码
+   	 *
+   	 * @param dto 验证码参数
+   	 * @return {@link CaptchaVO }
+   	 */
+   	public abstract CaptchaVO generate(CaptchaDTO dto);
+   
+   	/**
+   	 * 校验验证码
+   	 *
+   	 * @param key  缓存key
+   	 * @param code 验证码值
+   	 * @return boolean
+   	 */
+   	public boolean verify(String key, String code) {
+   		if (StringUtils.isBlank(key) || StringUtils.isBlank(code)) {
+   			return false;
+   		}
+   		String code_l = captchaStore.get(key);
+   		if (code_l == null) {
+   			return false;
+   		}
+   		boolean result = code_l.equalsIgnoreCase(code);
+   		if (result) {
+   			// 删除验证码
+   			captchaStore.remove(key);
+   		}
+   		return result;
+   	}
+   }
+   ```
+
+   ```java
+   @Service("picCaptchaService")
+   public class PicCaptchaServiceImpl extends AbstractCaptchaService implements CaptchaService {
+   
+   	private final DefaultKaptcha kaptcha;
+   
+   	@Autowired
+   	public PicCaptchaServiceImpl(DefaultKaptcha kaptcha) {
+   		this.kaptcha = kaptcha;
+   	}
+   
+   	@Resource(name = "numberLetterCaptchaGenerator")
+   	@Override
+   	public void setCaptchaGenerator(CaptchaGenerator captchaGenerator) {
+   		this.captchaGenerator = captchaGenerator;
+   	}
+   
+   	@Resource(name = "uuidKeyGenerator")
+   	@Override
+   	public void setKeyGenerator(KeyGenerator keyGenerator) {
+   		this.keyGenerator = keyGenerator;
+   	}
+   
+   	@Resource(name = "redisCaptchaStore")
+   	@Override
+   	public void setCaptchaStore(CaptchaStore captchaStore) {
+   		this.captchaStore = captchaStore;
+   	}
+   
+   	/**
+   	 * 生成验证码
+   	 */
+   	@Override
+   	public CaptchaVO generate(CaptchaDTO dto) {
+   		CaptchaResult generate = generate(dto, 4, "captcha:", 300);
+   		String key = generate.getKey();
+   		String code = generate.getCode();
+   		// 创建验证码base64
+   		String pic = createPic(code);
+   		CaptchaVO captchaVO = new CaptchaVO();
+   		captchaVO.setAliasing(pic);
+   		captchaVO.setKey(key);
+   		return captchaVO;
+   
+   	}
+   
+   	/**
+   	 * 根据code创建base64验证码
+   	 *
+   	 * @param code 生成base64验证码的code
+   	 * @return {@link String }
+   	 */
+   	private String createPic(String code) {
+   		// 生成图片验证码
+   		ByteArrayOutputStream outputStream;
+   		BufferedImage image = kaptcha.createImage(code);
+   
+   		outputStream = new ByteArrayOutputStream();
+   		String imgBase64Encoder = null;
+   		try {
+   			// 对字节数组Base64编码
+   			ImageIO.write(image, "png", outputStream);
+   			imgBase64Encoder = "data:image/png;base64," + Base64Utils.encodeToString(outputStream.toByteArray());
+   		} catch (IOException e) {
+   			e.printStackTrace();
+   		} finally {
+   			try {
+   				outputStream.close();
+   			} catch (IOException e) {
+   				e.printStackTrace();
+   			}
+   		}
+   		return imgBase64Encoder;
+   	}
+   }
+   ```
+
+#### 12.8.5 认证策略实现
 
 1. 修改自定义认证实现类
 
@@ -12031,21 +12606,89 @@ public class AuthParamsDTO implements Serializable {
    }
    ```
 
-3. 验证码认证实现
+#### 12.8.6 认证添加验证码
 
-4. 扫码认证实现
+1. `xuecheng-plus-auth` 模块定义远程调用 `xuecheng-plus-captcha` 模块校验验证码接口
 
+   ```java
+   @FeignClient(value = "captcha", fallbackFactory = CaptchaServiceClientFallbackFactory.class)
+   public interface CaptchaServiceClient {
+   
+   	/**
+   	 * 校验验证码
+   	 */
+   	@PostMapping(value = "/captcha/verify")
+   	Boolean verify(@RequestParam("key") String key, @RequestParam("code") String code);
+   }
+   ```
 
+   ```java
+   @Slf4j
+   @Component
+   public class CaptchaServiceClientFallbackFactory implements FallbackFactory<CaptchaServiceClient> {
+   
+   	@Override
+   	public CaptchaServiceClient create(Throwable cause) {
+   		return (key, code) -> {
+   			log.error("调用验证码服务熔断异常, key: {}, code: {}, 异常信息: []", key, code, cause);
+   			return Boolean.FALSE;
+   		};
+   	}
+   }
+   ```
 
+2. 用户名密码认证添加验证码校验
 
+   ```java
+   /**
+    * 用户名密码认证
+    */
+   @Override
+   public UsersVO auth(AuthDTO dto) {
+   
+       // 获取用户名信息
+       String username = dto.getUsername();
+   
+       // 获取验证码
+       String captchaCode = dto.getCaptchaCode();
+   
+       // 获取验证码key
+       String captchaKey = dto.getCaptchaKey();
+   
+       if (StringUtils.isEmpty(captchaKey) || StringUtils.isEmpty(captchaCode)) {
+           throw new RuntimeException("请输入验证码");
+       }
+   
+       // 校验验证码
+       Boolean verify = captchaServiceClient.verify(captchaKey, captchaCode);
+       if (!verify) {
+           throw new RuntimeException("验证码错误");
+       }
+   
+       Users users = userMapper.selectOne(new LambdaQueryWrapper<Users>()
+               .eq(Users::getUsername, username));
+   
+       // 用户不存在直接返回null,Spring Security进行后续处理
+       if (Objects.isNull(users)) {
+           return null;
+       }
+   
+       // 校验密码
+       String rawPassword = dto.getPassword();
+       String encodedPassword = users.getPassword();
+       if (!passwordEncoder.matches(rawPassword, encodedPassword)) {
+           throw new RuntimeException("用户名密码不正确!");
+       }
+   
+       // 返回usersVO
+       UsersVO usersVO = new UsersVO();
+       BeanUtils.copyProperties(users, usersVO);
+   
+       return usersVO;
+   }
+   ```
 
-
-
-
-
-
-
-
+   
 
 
 
