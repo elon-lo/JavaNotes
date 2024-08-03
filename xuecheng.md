@@ -11756,19 +11756,19 @@ public class AuthParamsDTO implements Serializable {
    public enum AuthTypeEnum {
    
    	/**
-   	 * 用户名密码
+   	 * 用户名密码认证
    	 */
-   	PASSWORD("password", "用户名密码"),
+   	PASSWORD("password", "用户名密码认证"),
    
    	/**
-   	 * 验证码
+   	 * 短信认证
    	 */
    	SMS("sms", "短信认证"),
    
    	/**
-   	 * 扫码认证
+   	 * 微信扫码认证
    	 */
-   	CODE("code", "扫码认证");
+   	WECHAT_CODE("wechat_code", "微信扫码认证");
    
    	/**
    	 * 认证类型
@@ -11855,25 +11855,25 @@ public class AuthParamsDTO implements Serializable {
 
    ```java
    /**
-    * 扫码认证策略
+    * 微信扫码认证策略
     *
     * @author elonlo
     * @date 2024/7/28 18:35
     */
    @Slf4j
-   @Component(value = "codeAuthStrategy")
-   public class CodeAuthStrategy implements AuthStrategy {
+   @Component(value = "wechatCodeAuthStrategy")
+   public class WechatCodeAuthStrategy implements AuthStrategy {
    
    	/**
-   	 * 扫码认证类型
+   	 * 微信扫码认证类型
    	 */
    	@Override
    	public AuthTypeEnum getAuthTypeEnum() {
-   		return AuthTypeEnum.CODE;
+   		return AuthTypeEnum.WECHAT_CODE;
    	}
    
    	/**
-   	 * 扫码认证
+   	 * 微信扫码认证
    	 */
    	@Override
    	public UsersVO auth(AuthParamsDTO dto) {
@@ -12688,7 +12688,875 @@ public class AuthParamsDTO implements Serializable {
    }
    ```
 
+
+#### 12.8.7 整合微信认证
+
+**微信公众平台**
+
+1. 申请微信公众平台测试号获取
+
+   测试号申请：https://mp.weixin.qq.com/debug/cgi-bin/sandboxinfo?action=showinfo&t=sandbox/index
+
+2. 获取微信公众平台测试号 appID、appsecret
+
+3. 配置回调接口 URL、TOKEN、JS 接口安全域名
+
+4. 关注测试公众号
+
+5. 项目添加依赖信息
+
+   ```xml
+   <commons-pool2.version>2.6.2</commons-pool2.version>
    
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-data-redis</artifactId>
+   </dependency>
+   
+   <dependency>
+       <groupId>org.apache.commons</groupId>
+       <artifactId>commons-pool2</artifactId>
+       <version>${commons-pool2.version}</version>
+   </dependency>
+   ```
+
+   
+
+6. 添加微信常量类、跨域配置类、项目配置、微信工具类以及放行 URL 请求
+
+   ```java
+   public final class WechatConstants {
+   
+   	/**
+   	 * 微信公众平台认证token
+   	 */
+   	public static final String WECHAT_AUTH_TOKEN = "2gHl4Opcg1e";
+   
+   	/**
+   	 * 微信公众平台appid(填写自己的,这里混淆)
+   	 */
+   	public static final String APP_ID = "wxbl8t02d0e133apo2";
+   
+   	/**
+   	 * 微信公众平台appSecret(填写自己的,这里混淆)
+   	 */
+   	public static final String APP_SECRET = "699e8d21096f7a28c01iuf58b8fe903b";
+   
+   	/**
+   	 * 微信开放平台appid
+   	 */
+   	public static final String OPEN_APP_ID = "wxed9954c01bb89b47";
+   
+   	/**
+   	 * 微信开放平台appSecret
+   	 */
+   	public static final String OPEN_APP_SECRET = "a7482517235173ddb4083788de60b90e";
+   
+   	/**
+   	 * 微信开放平台回调URL,前缀只能使用http://localhost:8160
+   	 */
+   	public static final String OPEN_REDIRECT_URI = "http://localhost:8160/auth/wechat";
+   
+   	/**
+   	 * 微信开放平台授权码
+   	 */
+   	public static final String OPEN_CODE_URL = "https://open.weixin.qq.com/connect/qrconnect?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_login&state=test#wechat_redirect";
+   
+   	/**
+   	 * 获取微信token
+   	 */
+   	public static final String ACCESS_TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s";
+   
+   	/**
+   	 * 获取微信ticket
+   	 */
+   	public static final String QRCODE_TICKET_URL = "https://api.weixin.qq.com/cgi-bin/qrcode/create?access_token=%s";
+   
+   	/**
+   	 * 获取扫码登录微信二维码
+   	 */
+   	public static final String QRCODE_SRC_URL = "https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=%s";
+   }
+   ```
+
+   ```java
+   @Configuration
+   public class CorsConfig implements WebMvcConfigurer {
+   
+   	@Override
+   	public void addCorsMappings(CorsRegistry registry) {
+   		registry
+   				// 配置作用路径
+   				.addMapping("/**")
+   				// 允许的请求头
+   				.allowedHeaders("*")
+   				// 允许的请求方法（GET、POST、PUT...）
+   				.allowedMethods("*")
+   				// 允许发送身份验证信息（如 cookies）
+   				.allowCredentials(true)
+   				// 暴露响应头 (前端可通过Js代码获取响应头,"*"表示所有)
+   				.exposedHeaders("*");
+   	}
+   }
+   ```
+
+   ```yaml
+   spring:
+     application:
+       name: auth-service
+   
+     cloud:
+       nacos:
+         server-addr: ip:19948
+         discovery:
+           namespace: dev
+           group: xuecheng-plus
+         config:
+           namespace: dev
+           group: xuecheng-plus
+           file-extension: yaml
+           refresh-enabled: true
+           shared-configs:
+             - data-id: logging-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+             - data-id: redis-${spring.profiles.active}.yaml
+               group: xuecheng-plus-common
+               refresh: true
+   
+     profiles:
+       active: dev
+   ```
+
+   ```java
+   public class WechatUtils {
+   
+   	private final static Logger logger = LoggerFactory.getLogger(WechatUtils.class);
+   
+   	/**
+   	 * 创建签名
+   	 *
+   	 * @param token     令牌
+   	 * @param timestamp 时间戳
+   	 * @param nonce     随机数
+   	 * @return {@link String }
+   	 */
+   	public static String createSignature(String token, String timestamp, String nonce) {
+   		String[] array = new String[]{token, timestamp, nonce};
+   		Arrays.sort(array);
+   		StringBuilder sb = new StringBuilder();
+   		for (String str : array) {
+   			sb.append(str);
+   		}
+   		try {
+   			MessageDigest md = MessageDigest.getInstance("SHA-1");
+   			md.update(sb.toString().getBytes());
+   			byte[] digest = md.digest();
+   			StringBuilder hexStr = new StringBuilder();
+   			String shaHex;
+   			for (byte b : digest) {
+   				shaHex = Integer.toHexString(b & 0xFF);
+   				if (shaHex.length() < 2) {
+   					hexStr.append(0);
+   				}
+   				hexStr.append(shaHex);
+   			}
+   			return hexStr.toString();
+   		} catch (NoSuchAlgorithmException e) {
+   			logger.error("获取签名信息失败", e.getCause());
+   		}
+   		return "";
+   	}
+   }
+   ```
+
+   ```java
+   @EnableWebSecurity
+   @EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+   public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+       /**
+        * 配置安全拦截机制
+        */
+       @Override
+       protected void configure(HttpSecurity http) throws Exception {
+           http
+                   .csrf().disable()
+                   .authorizeRequests()
+                   // 放行微信认证接口
+                   .antMatchers("/wechat/**").permitAll()
+                   .antMatchers("/r/**").authenticated()
+                   // 其它请求全部放行
+                   .anyRequest().permitAll()
+                   .and()
+                   // 登录成功跳转到/login-success
+                   .formLogin().successForwardUrl("/login-success");
+       }
+   }
+   ```
+
+7. 微信公众号认证后端代码
+
+   ```java
+   @Slf4j
+   @RestController
+   @RequestMapping("/wechat/public")
+   public class WechatPublicController {
+   
+   	@Resource
+   	private RedisTemplate<String, String> redisTemplate;
+   
+   	@GetMapping
+   	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
+   		log.info("微信在配置服务器传递验证参数");
+   		Map<String, String[]> reqParam = request.getParameterMap();
+   		for (String key : reqParam.keySet()) {
+   			log.info(" {} = {}", key, reqParam.get(key));
+   		}
+   
+   		String signature = request.getParameter("signature");
+   		String echoStr = request.getParameter("echostr");
+   		String timestamp = request.getParameter("timestamp");
+   		String nonce = request.getParameter("nonce");
+   
+   		String buildSign = WechatUtils.createSignature(WechatConstants.WECHAT_AUTH_TOKEN, timestamp, nonce);
+   
+   		log.info("服务器生成签名信息: {}", buildSign);
+   		if (buildSign.equals(signature)) {
+   			response.getWriter().write(echoStr);
+   			log.info("服务生成签名与微信服务器生成签名相等,验证成功");
+   		}
+   	}
+   
+   	@PostMapping
+   	public void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
+   		String requestBody = IOUtils.toString(request.getInputStream(), StandardCharsets.UTF_8);
+   		try {
+   			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+   			dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+   			dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+   			dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+   			dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+   			dbf.setXIncludeAware(false);
+   			dbf.setExpandEntityReferences(false);
+   			DocumentBuilder db = dbf.newDocumentBuilder();
+   			StringReader sr = new StringReader(requestBody);
+   			InputSource is = new InputSource(sr);
+   			Document document = db.parse(is);
+   			Element root = document.getDocumentElement();
+   			NodeList fromUserName = document.getElementsByTagName("FromUserName");
+   			String openId = fromUserName.item(0).getTextContent();
+   			log.info("获取到扫码用户openid: {}", openId);
+   			NodeList msgType = root.getElementsByTagName("MsgType");
+   			String msgTypeStr = msgType.item(0).getTextContent();
+   			if ("event".equals(msgTypeStr)) {
+   				NodeList event = root.getElementsByTagName("Event");
+   				String eventStr = event.item(0).getTextContent();
+   				log.info("获取到event类型: {}", eventStr);
+   				if ("SCAN".equals(eventStr)) {
+   					NodeList eventKey = root.getElementsByTagName("EventKey");
+   					String eventKeyStr = eventKey.item(0).getTextContent();
+   					log.info("获取到扫码场景值: {}", eventKeyStr);
+   
+   					if (eventKeyStr.indexOf("QRCODE_LOGIN") == 0) {
+   						log.info("该用户未绑定微信账号");
+   					}
+   				}
+   			}
+   			if ("text".equals(msgTypeStr)) {
+   				NodeList content = root.getElementsByTagName("Content");
+   				String contentStr = content.item(0).getTextContent();
+   				log.info("用户发送信息: {}", contentStr);
+   			}
+   
+   			// 缓存认证标志,回调/wechat/qrCode post接口时会通过此参数判断是否扫码成功
+   			redisTemplate.opsForValue().set("authFlag", "1");
+   			redisTemplate.opsForValue().set("loginUser", openId);
+   		} catch (Exception e) {
+   			log.error("微信调用服务后台出现错误: []", e);
+   		}
+   	}
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @RestController
+   @RequestMapping("/wechat/public/qrCode")
+   public class WechatPublicQrCodeController {
+   
+   	@Resource
+   	private RedisTemplate<String, String> redisTemplate;
+   
+   	private final WechatAuthService wechatAuthService;
+   
+   	@Autowired
+   	public WechatPublicQrCodeController(WechatAuthService wechatAuthService) {
+   		this.wechatAuthService = wechatAuthService;
+   	}
+   
+   	@GetMapping
+   	public void doGet(HttpServletResponse response) {
+   		wechatAuthService.publicAuth(response);
+   	}
+   
+   	@PostMapping
+   	public void doPost(HttpServletRequest request, HttpServletResponse response) {
+   		String cacheKey = redisTemplate.opsForValue().get("authFlag");
+   		String loginUser = redisTemplate.opsForValue().get("loginUser");
+   		log.info("登录轮询读取缓存key:{}", cacheKey);
+   		response.setContentType("application/json;charset=utf-8");
+   		try {
+   			String requestBody = IOUtils.toString(request.getInputStream(), StandardCharsets.UTF_8);
+   			log.info("获取到请求正文: {}", requestBody);
+   			log.info("是否扫码成功: {}", Objects.equals("1", cacheKey));
+   			JSONObject ret = new JSONObject();
+   			if (null != cacheKey) {
+   				ret.put("errcode", 0);
+   				ret.put("errmsg", "ok");
+   				ret.put("loginUser", loginUser);
+   				redisTemplate.delete("authFlag");
+   				redisTemplate.delete("loginUser");
+   				log.info("已移除缓存key：{}", cacheKey);
+   				response.getWriter().write(ret.toJSONString());
+   				return;
+   			}
+   			ret.put("errcode", 99);
+   			ret.put("errmsg", "用户还未扫码");
+   			response.getWriter().write(ret.toJSONString());
+   		} catch (IOException e) {
+   			e.printStackTrace();
+   		}
+   	}
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class WechatAuthAuthServiceImpl implements WechatAuthService {
+   
+   	private static final MediaType JsonMedia = MediaType.parse("application/json; charset=utf-8");
+   
+   	/**
+   	 * 微信公众平台认证
+   	 */
+   	@Override
+   	public void publicAuth(HttpServletResponse response) {
+   		// 获取微信token
+   		String accessToken = this.getAccessToken();
+   
+   		// 获取二维码ticket
+   		String qrCodeTicket = this.getQrCodeTicket(accessToken, "test", "test");
+   
+   		InputStream in = null;
+   		OutputStream os = null;
+   		try {
+   			in = this.getQrCodeStream(qrCodeTicket);
+   			response.setContentType("image/jpeg; charset=utf-8");
+   
+   			os = response.getOutputStream();
+   			byte[] buffer = new byte[1024];
+   			int len;
+   			while ((len = in.read(buffer)) != -1) {
+   				os.write(buffer, 0, len);
+   			}
+   			os.flush();
+   		} catch (IOException e) {
+   			e.printStackTrace();
+   		} finally {
+   			try {
+   				if (null != in) {
+   					in.close();
+   				}
+   
+   				if (null != os) {
+   					os.close();
+   				}
+   			} catch (IOException e) {
+   				e.printStackTrace();
+   			}
+   		}
+   	}
+       
+   	/**
+   	 * 获取微信token
+   	 */
+   	private String getAccessToken() {
+   		String accessTokenUrl = String.format(WechatConstants.ACCESS_TOKEN_URL,
+   				WechatConstants.APP_ID, WechatConstants.APP_SECRET);
+   		log.info("accessTokenUrl转换后的访问地址: {}", accessTokenUrl);
+   		Request request = new Request.Builder().url(accessTokenUrl).build();
+   		OkHttpClient httpClient = new OkHttpClient();
+   		Call call = httpClient.newCall(request);
+   		try {
+   			Response response = call.execute();
+   			String resBody = response.body().string();
+   			log.info("获取到相应正文:{}", resBody);
+   			JSONObject jo = JSONObject.parseObject(resBody);
+   			String accessToken = jo.getString("access_token");
+   			String errCode = jo.getString("errcode");
+   			if (StringUtils.isBlank(errCode)) {
+   				errCode = "0";
+   			}
+   			if ("0".equals(errCode)) {
+   				log.info("获取accessToken成功,值为：{}", accessToken);
+   				return accessToken;
+   			}
+   		} catch (IOException e) {
+   			log.error("获取accessToken出现错误: []", e);
+   		}
+   		return null;
+   	}
+   
+   	/**
+   	 * 获取二维码ticket
+   	 */
+   	private String getQrCodeTicket(String accessToken, String qeCodeType, String qrCodeValue) {
+   		String qrCodeTicketUrl = String.format(WechatConstants.QRCODE_TICKET_URL, accessToken);
+   		log.info("qrCodeTicketUrl转换后的访问地址: {}", qrCodeTicketUrl);
+   
+   		JSONObject pd = new JSONObject();
+   		pd.put("expire_seconds", 604800);
+   		pd.put("action_name", "QR_STR_SCENE");
+   		JSONObject sence = new JSONObject();
+   		sence.put("scene", JSONObject
+   				.parseObject("{\"scene_str\":\"" + String.format("%s#%s", qeCodeType, qrCodeValue) + "\"}"));
+   		pd.put("action_info", sence);
+   		log.info("提交内容: {}", pd.toJSONString());
+   		RequestBody body = RequestBody.create(JsonMedia, pd.toJSONString());
+   
+   		Request request = new Request.Builder().url(qrCodeTicketUrl).post(body).build();
+   		OkHttpClient httpClient = new OkHttpClient();
+   		Call call = httpClient.newCall(request);
+   		try {
+   			Response response = call.execute();
+   			String resBody = response.body().string();
+   			log.info("获取到相应正文: {}", resBody);
+   			JSONObject jo = JSONObject.parseObject(resBody);
+   			String qrTicket = jo.getString("ticket");
+   			String errCode = jo.getString("errcode");
+   			if (StringUtils.isBlank(errCode)) {
+   				errCode = "0";
+   			}
+   			if ("0".equals(jo.getString(errCode))) {
+   				log.info("获取QrCodeTicket成功,值为：{}", qrTicket);
+   			}
+   			return qrTicket;
+   		} catch (IOException e) {
+   			log.error("获取QrCodeTicket出现错误: []", e);
+   		}
+   		return null;
+   	}
+   
+   	/**
+   	 * 获取二维码图片流
+   	 */
+   	private InputStream getQrCodeStream(String qrCodeTicket) {
+   		String qrCodeSrcUrl = String.format(WechatConstants.QRCODE_SRC_URL, qrCodeTicket);
+   		log.info("qrCodeSrcUrl转换后的访问地址: {}", qrCodeSrcUrl);
+   		Request request = new Request.Builder().url(qrCodeSrcUrl).get().build();
+   		OkHttpClient httpClient = new OkHttpClient();
+   		Call call = httpClient.newCall(request);
+   		try {
+   			Response response = call.execute();
+   			return response.body().byteStream();
+   		} catch (IOException e) {
+   			log.error("获取qrCodeSrcUrl出现错误: []", e);
+   		}
+   		return null;
+   	}
+   }
+   ```
+
+8. 微信公众号认证前端代码
+
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+       <meta charset="UTF-8">
+       <title>微信登录</title>
+       <style>
+           .loginPanel {
+               margin-left: 25%;
+               border: 1px solid #ddd;
+               padding: 20px;
+               border-radius: 8px;
+               width: 50%;
+               text-align: center;
+           }
+           .title {
+               font-size: 24px;
+               margin-bottom: 20px;
+           }
+           .panelContent {
+               margin-top: 20px;
+           }
+           .qrcode {
+               width: 200px;
+               height: 200px;
+               border: 1px solid #ddd;
+               border-radius: 8px;
+           }
+           .info {
+               margin-top: 20px;
+           }
+           .error {
+               color: red;
+           }
+       </style>
+   </head>
+   <body>
+       <div class="loginPanel">
+           <div class="title">微信扫码登录</div>
+           <div class="panelContent">
+               <div class="wrp_code">
+                   <img class="qrcode lightBorder" src="http://domain:63070/auth/wechat/qrCode?key=herbert_test_key" alt="微信二维码">
+               </div>
+               <div class="info">
+                   <div id="wx_default_tip">
+                       <p>请使用微信扫描二维码登录</p>
+                       <p>“扫码登录测试系统”</p>
+                       <p id="error_message" class="error"></p>
+                   </div>
+               </div>
+           </div>
+       </div>
+   
+       <script>
+           // Function to start polling
+           function doPolling() {
+               fetch("http://domain:63070/auth/wechat/qrCode?key=herbert_test_key", { method: 'POST' })
+                   .then(resp => resp.json())
+                   .then(data => {
+                       if (data.errcode === 0) {
+                           // User successfully logged in
+   			localStorage.setItem("loginUser", JSON.stringify(data.loginUser));
+                           window.location.replace("success.html");
+                       } else {
+                           // Show error message and refresh QR code
+                           document.getElementById('error_message').innerText = "扫码失败，请重新尝试。";
+                           setTimeout(() => {
+                               // Optionally, you can refresh the QR code image here
+                               document.querySelector('.qrcode').src = "http://domain:63070/auth/wechat/qrCode?key=herbert_test_key&_=" + new Date().getTime();
+                               doPolling(); // Retry polling
+                           }, 5000);
+                       }
+                   })
+                   .catch(error => {
+                       console.error("Polling error:", error);
+                       document.getElementById('error_message').innerText = "发生错误，请刷新页面。";
+                       setTimeout(() => {
+                           doPolling(); // Retry polling
+                       }, 5000);
+                   });
+           }
+   
+           // Start polling when the page loads
+           window.onload = function() {
+               doPolling();
+           };
+       </script>
+   </body>
+   </html>
+   ```
+
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+       <meta charset="UTF-8">
+       <title>登录成功</title>
+       <style>
+           body {
+               font-family: Arial, sans-serif;
+               text-align: center;
+               margin: 50px;
+           }
+       </style>
+   </head>
+   <body>
+       <h1>登录成功</h1>
+       <p id="user_info">正在加载用户信息...</p>
+   
+       <script>
+           // Load and display the user information from local storage
+           window.onload = function() {
+               const user = localStorage.getItem('loginUser');
+               if (user) {
+                   const userObj = JSON.parse(user);
+   		document.getElementById('user_info').innerText = `欢迎, ${user}`;
+               } else {
+                   document.getElementById('user_info').innerText = '未登录';
+               }
+           };
+       </script>
+   </body>
+   </html>
+   ```
+
+   ```js
+   const express = require('express');
+   const app = express();
+   const port = 3000;
+   
+   app.use(express.json());
+   app.use(express.static('public')); // Serve static files like login.html and success.html
+   
+   // Route to handle WeChat QR code and login status
+   app.post('http://domain:63070/auth/wechat/qrCode', (req, res) => {
+       // Simulate a successful login and return a dummy user
+       // In a real application, you would generate and return a QR code
+       const user = { username: 'test_user' };
+   
+       // Example response for successful login
+       const response = {
+           errcode: 0, // 0 indicates success
+           binduser: user
+       };
+   
+       res.json(response);
+   });
+   
+   // Route to handle WeChat callback
+   app.get('/callback', (req, res) => {
+       // Handle WeChat login callback
+       res.redirect('/success.html'); // Redirect to success page
+   });
+   
+   app.listen(port, () => {
+       console.log(`Server running at http://localhost:${port}`);
+   });
+   ```
+
+注意：后端服务需要部署到公网环境，且必须绑定域名，接口认证时回调的后端接口 URL 也必须要是域名格式
+
+**微信开放平台**
+
+1. Nacos 中修改项目配置
+
+   ```yaml
+   server:
+     servlet:
+       context-path: /auth
+     port: 8160
+   ```
+
+2. 微信扫码认证策略
+
+   ```java
+   @Slf4j
+   @Component(value = "wechatCodeAuthStrategy")
+   public class WechatCodeAuthStrategy implements AuthStrategy {
+   
+   	private final UserMapper userMapper;
+   
+   	@Autowired
+   	public WechatCodeAuthStrategy(UserMapper userMapper) {
+   		this.userMapper = userMapper;
+   	}
+   
+   	/**
+   	 * 微信扫码认证类型
+   	 */
+   	@Override
+   	public AuthTypeEnum getAuthTypeEnum() {
+   		return AuthTypeEnum.WECHAT_CODE;
+   	}
+   
+   	/**
+   	 * 微信扫码认证
+   	 */
+   	@Override
+   	public UsersVO auth(AuthDTO dto) {
+   		String username = dto.getUsername();
+   
+   		// 查询用户信息
+   		Users users = userMapper.selectOne(new LambdaQueryWrapper<Users>()
+   				.eq(Users::getUsername, username));
+   
+   		if (Objects.isNull(users)) {
+   			throw new RuntimeException("用户不存在");
+   		}
+   
+   		UsersVO usersVO = new UsersVO();
+   		BeanUtils.copyProperties(users, usersVO);
+   
+   		return usersVO;
+   	}
+   }
+   ```
+
+3. 微信开放平台后端代码
+
+   ```java
+   @Slf4j
+   @Controller
+   @RequestMapping("/wechat/open")
+   public class WechatOpenController {
+   
+   	private final WechatAuthService wechatAuthService;
+   
+   	@Autowired
+   	public WechatOpenController(WechatAuthService wechatAuthService) {
+   		this.wechatAuthService = wechatAuthService;
+   	}
+   
+   	@GetMapping("/login")
+   	public String login(@RequestParam("code") String code, @RequestParam("state") String state) {
+   		// 获取授权码链接: https://open.weixin.qq.com/connect/qrconnect?appid=wxed9954c01bb89b47&redirect_uri=http://localhost:8160/wechat/open/login&response_type=code&scope=snsapi_login&state=STATE#wechat_redirect
+   		log.info("微信开放平台扫码,回调code: {}, state: {}", code, state);
+   
+   		// 微信开放平台认证逻辑,认证成功后添加用户到数据库
+   		UsersVO usersVO = wechatAuthService.openAuth(code);
+   
+   		if (Objects.isNull(usersVO)) {
+   			return "redirect:http://localhost:3000/error.html";
+   //			return usersVO;
+   		}
+   
+   		// 重定向到自己认证平台认证,使用微信扫码认证策略再次ren'zh
+   //		return "redirect:http://localhost:8160/login.html";
+   		return "redirect:http://localhost:3000/success.html";
+   	}
+   }
+   ```
+
+   ```java
+   @Slf4j
+   @Service
+   public class WechatAuthAuthServiceImpl implements WechatAuthService {
+   
+   	@Resource
+   	private RestTemplate restTemplate;
+   
+   	@Resource
+   	private UserMapper userMapper;
+   
+   	@Resource
+   	private UserRoleMapper userRoleMapper;
+   
+   	@Resource
+   	private WechatAuthAuthServiceImpl currentProxy;
+   
+   	/**
+   	 * 微信开放平台认证
+   	 */
+   	@Override
+   	public UsersVO openAuth(String code) {
+   		// 请求微信开放平台申请令牌
+   		Map<String, String> accessTokenMap = this.getOpenAccessToken(code);
+   
+   		// 通过令牌查询用户信息
+   		Map<String, String> openUserInfo = this.getOpenUserInfo(accessTokenMap);
+   
+   		// 将微信授权用户信息写入数据库
+   		Users users = currentProxy.saveWechatUser(openUserInfo);
+   
+   		// 返回用户信息
+   		UsersVO usersVO = new UsersVO();
+   		BeanUtils.copyProperties(users, usersVO);
+   		return usersVO;
+   	}
+   
+   	/**
+   	 * 保存微信授权用户信息
+   	 */
+   	@Transactional(rollbackFor = {Exception.class, RuntimeException.class}, propagation = Propagation.REQUIRED)
+   	public Users saveWechatUser(Map<String, String> openUserInfo) {
+   		String unionId = openUserInfo.get("unionid");
+   		String nickname = openUserInfo.get("nickname");
+   
+   		// 查询用户是否存在,存在则直接返回,不存在则添加
+   		Users users = userMapper.selectOne(new LambdaQueryWrapper<Users>()
+   				.eq(Users::getWxUnionid, unionId));
+   		if (Objects.nonNull(users)) {
+   			return users;
+   		}
+   
+   		// 添加微信用户信息
+   		Users wechatUser = new Users();
+   		final String userId = UUID.randomUUID().toString();
+   		wechatUser.setId(userId);
+   		wechatUser.setUsername(unionId);
+   		wechatUser.setPassword(unionId);
+   		wechatUser.setWxUnionid(unionId);
+   		wechatUser.setNickname(nickname);
+   		wechatUser.setName(nickname);
+   		wechatUser.setUtype("101001");
+   		wechatUser.setStatus("1");
+   		wechatUser.setCreateTime(LocalDateTime.now());
+   
+   		userMapper.insert(wechatUser);
+   
+   		// 添加用户权限
+   		UserRole userRole = new UserRole();
+   		userRole.setId(UUID.randomUUID().toString());
+   		userRole.setUserId(userId);
+   		userRole.setRoleId("17");
+   		userRole.setCreateTime(LocalDateTime.now());
+   		userRoleMapper.insert(userRole);
+   
+   		return wechatUser;
+   	}
+   
+   	/**
+   	 * 获取微信开放平台用户信息
+   	 */
+   	private Map<String, String> getOpenUserInfo(Map<String, String> accessTokenMap) {
+   		String accessToken = accessTokenMap.get("access_token");
+   		String openid = accessTokenMap.get("openid");
+   
+   		final String url = String.format(WechatConstants.OPEN_USER_INFO, accessToken, openid);
+   
+   		try {
+   			log.info("开始请求微信开放平台用户信息, 请求url: {}, accessToken: {}, openid: {}", url, accessToken, openid);
+   			ResponseEntity<String> exchange = restTemplate.exchange(url,
+   					HttpMethod.GET, null, String.class);
+   
+   			// 返回的默认编码为ISO8859-1,需要转为UTF-8,否则可能会乱码
+   			String body = new String(exchange.getBody().getBytes(StandardCharsets.ISO_8859_1),
+   					StandardCharsets.UTF_8);
+   
+   			return JSON.parseObject(body, new TypeReference<Map<String, String>>() {
+   			});
+   		} catch (RestClientException e) {
+   			log.error("获取微信开放平台用户信息失败, 请求url: {}, accessToken: {}, openid: {}", url, accessToken, openid);
+   			e.printStackTrace();
+   			throw new RuntimeException("获取微信开放平台用户信息失败");
+   		}
+   	}
+   
+   	/**
+   	 * 获取微信开放平台token
+   	 */
+   	private Map<String, String> getOpenAccessToken(String code) {
+   		final String openAppId = WechatConstants.OPEN_APP_ID;
+   		final String openAppSecret = WechatConstants.OPEN_APP_SECRET;
+   		final String url = String.format(WechatConstants.OPEN_ACCESS_TOKEN_URL, openAppId, openAppSecret, code);
+   		try {
+   			log.info("开始请求微信开放平台token, 请求url: {}, openAppId: {}, openAppSecret: {}, code: {}",
+   					url, openAppId, openAppSecret, code);
+   			ResponseEntity<String> exchange = restTemplate.exchange(url,
+   					HttpMethod.POST, null, String.class);
+   
+   			String body = exchange.getBody();
+   
+   			return JSON.parseObject(body, new TypeReference<Map<String, String>>() {
+   			});
+   		} catch (RestClientException e) {
+   			log.error("获取微信开放平台token失败, 请求url: {}, openAppId: {}, openAppSecret: {}, code: {}",
+   					url, openAppId, openAppSecret, code);
+   			e.printStackTrace();
+   			throw new RuntimeException("获取微信开放平台token失败");
+   		}
+   	}
+   }
+   ```
+
+   
+
+
 
 
 
