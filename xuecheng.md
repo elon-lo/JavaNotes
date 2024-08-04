@@ -13554,7 +13554,69 @@ public class AuthParamsDTO implements Serializable {
    }
    ```
 
+
+### 12.9 授权
+
+#### 12.9.1 功能权限
+
+1. `xuecheng-plus-auth` 模块添加查询权限列表方法
+
+   ```java
+   @Mapper
+   public interface MenuMapper extends BaseMapper<Menu> {
    
+   	/**
+   	 * 根据用户id查询菜单权限集合
+   	 *
+   	 * @param userId 用户ID
+   	 * @return {@link List }<{@link Menu }> 菜单集合
+   	 */
+   	@Select("SELECT	`code` FROM xc_menu WHERE id IN (SELECT menu_id FROM xc_permission WHERE role_id IN ( SELECT role_id FROM xc_user_role WHERE user_id = #{userId} ))")
+   	List<String> selectPermissionByUserId(@Param("userId") String userId);
+   }
+   ```
+
+2. 用户认证实现类中查询用户所拥有的权限并填充到 `UserDetails`
+
+   ```java
+   private UserDetails buildUserPrincipal(UsersVO usersVO) {
+       String password = usersVO.getPassword();
+   
+       // 注意为了安全,用户对象中的密码需要置空
+       usersVO.setPassword(null);
+   
+       // 封装用户信息
+       String userJson = JSON.toJSONString(usersVO);
+   
+       // 查询用户所拥有的权限
+       List<String> permission = menuMapper.selectPermissionByUserId(usersVO.getId());
+       String[] authorizations = permission.toArray(new String[0]);
+   
+       // 构造UserDetails对象返回
+       return User.withUsername(userJson)
+               .authorities(authorizations)
+               .password(password)
+               .build();
+   }
+   ```
+
+3. `xuecheng-plus-content-api` 模块中使用 `PreAuthorize` 注解声明功能权限
+
+   ```java
+   @PreAuthorize(value = "hasAuthority('course_list')")
+   @ApiOperation(value = "课程信息列表")
+   @PostMapping("/course/list")
+   public PageResult<CourseBase> list(PageParams params, @RequestBody QueryCourseParamsDTO dto) {
+   
+       Page<CourseBase> basePage = courseBaseService.listAllCourse(params, dto);
+   
+       return new PageResult<>(basePage.getRecords(), basePage.getTotal(), basePage.getCurrent(), basePage.getPages());
+   }
+   ```
+
+#### 12.9.2 数据权限
+
+
 
 
 
