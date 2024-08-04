@@ -13616,6 +13616,40 @@ public class AuthParamsDTO implements Serializable {
 
 #### 12.9.2 数据权限
 
+本质上是通过查询数据时添加一些用户、角色相关的 id 条件进行查询
+
+```java
+@PreAuthorize(value = "hasAuthority('xc_teachmanager_course_list')")
+@ApiOperation(value = "课程信息列表")
+@PostMapping("/course/list")
+public PageResult<CourseBase> list(PageParams params, @RequestBody QueryCourseParamsDTO dto) {
+    // 增加机构id作为查询条件,使用机构或者用户id给接口增加数据权限
+    SecurityUserUtils.Users user = SecurityUserUtils.getUser();
+    String companyId = Optional.ofNullable(user)
+            .map(SecurityUserUtils.Users::getCompanyId)
+            .orElse("");
+
+    Page<CourseBase> basePage = courseBaseService.listAllCourse(companyId, params, dto);
+
+    return new PageResult<>(basePage.getRecords(), basePage.getTotal(), basePage.getCurrent(), basePage.getPages());
+}
+```
+
+```java
+@Override
+public Page<CourseBase> listAllCourse(String companyId, PageParams params, QueryCourseParamsDTO dto) {
+
+    Page<CourseBase> page = new Page<>(params.getPageNo(), params.getPageSize());
+
+    return courseBaseMapper.selectPage(page, new LambdaQueryWrapper<CourseBase>()
+            .like(!StringUtils.isEmpty(dto.getCourseName()), CourseBase::getName, dto.getCourseName())
+            .eq(!StringUtils.isEmpty(companyId), CourseBase::getCompanyId, companyId)
+            .eq(!StringUtils.isEmpty(dto.getAuditStatus()), CourseBase::getAuditStatus, dto.getAuditStatus()));
+}
+```
+
+
+
 
 
 
